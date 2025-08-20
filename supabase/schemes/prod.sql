@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2025-08-20T19:51:07.752484
+-- Generated: 2025-08-20T21:19:22.398271
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -242,7 +242,6 @@ COMMENT ON TABLE auth.sso_providers IS 'Auth: Manages SSO identity provider info
 COMMENT ON COLUMN auth.sso_providers.resource_id IS 'Auth: Uniquely identifies a SSO provider according to a user-chosen resource ID (case insensitive), useful in infrastructure as code.';
 
 -- Table: auth.users
--- Description: Auth: Stores user login data within a secure schema.
 CREATE TABLE IF NOT EXISTS auth.users (
     instance_id uuid,
     instance_id uuid,
@@ -317,8 +316,42 @@ CREATE TABLE IF NOT EXISTS auth.users (
     CONSTRAINT users_phone_key UNIQUE (phone),
     CONSTRAINT users_pkey PRIMARY KEY (id)
 );
-COMMENT ON TABLE auth.users IS 'Auth: Stores user login data within a secure schema.';
 COMMENT ON COLUMN auth.users.is_sso_user IS 'Auth: Set this column to true when the account comes from SSO. These accounts can have duplicate emails.';
+
+-- Table: public.equipment_data
+CREATE TABLE IF NOT EXISTS public.equipment_data (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    file_name text NOT NULL,
+    position integer(32),
+    name_and_specs text,
+    type_mark_docs text,
+    equipment_code text,
+    manufacturer text,
+    unit_measure text,
+    quantity numeric,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT equipment_data_pkey PRIMARY KEY (id)
+);
+COMMENT ON COLUMN public.equipment_data.position IS 'Позиция';
+COMMENT ON COLUMN public.equipment_data.name_and_specs IS 'Наименования и технические характеристики';
+COMMENT ON COLUMN public.equipment_data.type_mark_docs IS 'Тип, марка, обозначение документов, опросного листа';
+COMMENT ON COLUMN public.equipment_data.equipment_code IS 'Код оборудования, изделия, материалов, № опросного листа';
+COMMENT ON COLUMN public.equipment_data.manufacturer IS 'Завод изготовитель';
+COMMENT ON COLUMN public.equipment_data.unit_measure IS 'Единица измерения';
+COMMENT ON COLUMN public.equipment_data.quantity IS 'Кол-во';
+
+-- Table: public.excel_data
+CREATE TABLE IF NOT EXISTS public.excel_data (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    file_name text NOT NULL,
+    sheet_name text,
+    row_number integer(32),
+    data jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT excel_data_pkey PRIMARY KEY (id)
+);
 
 -- Table: public.users
 CREATE TABLE IF NOT EXISTS public.users (
@@ -935,7 +968,7 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -943,7 +976,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -983,14 +1016,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
-
-
--- Function: extensions.pgp_pub_encrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
  RETURNS bytea
  LANGUAGE c
@@ -998,12 +1023,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
--- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+-- Function: extensions.pgp_pub_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
@@ -1014,8 +1039,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
+-- Function: extensions.pgp_pub_encrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
+
+
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1023,7 +1056,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1063,7 +1096,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1071,7 +1104,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1395,6 +1428,30 @@ begin
     from pg_authid 
     where rolname=$1 and rolcanlogin;
 end;
+$function$
+
+
+-- Function: public.update_equipment_data_updated_at
+CREATE OR REPLACE FUNCTION public.update_equipment_data_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$function$
+
+
+-- Function: public.update_excel_data_updated_at
+CREATE OR REPLACE FUNCTION public.update_excel_data_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
 $function$
 
 
@@ -2412,6 +2469,12 @@ $function$
 -- TRIGGERS
 -- ============================================
 
+-- Trigger: update_equipment_data_updated_at on public.equipment_data
+CREATE TRIGGER update_equipment_data_updated_at BEFORE UPDATE ON public.equipment_data FOR EACH ROW EXECUTE FUNCTION update_equipment_data_updated_at()
+
+-- Trigger: update_excel_data_updated_at on public.excel_data
+CREATE TRIGGER update_excel_data_updated_at BEFORE UPDATE ON public.excel_data FOR EACH ROW EXECUTE FUNCTION update_excel_data_updated_at()
+
 -- Trigger: update_users_updated_at on public.users
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
@@ -2561,6 +2624,24 @@ CREATE INDEX users_is_anonymous_idx ON auth.users USING btree (is_anonymous);
 -- Index on auth.users
 CREATE UNIQUE INDEX users_phone_key ON auth.users USING btree (phone);
 
+-- Index on public.equipment_data
+CREATE INDEX idx_equipment_data_created_at ON public.equipment_data USING btree (created_at DESC);
+
+-- Index on public.equipment_data
+CREATE INDEX idx_equipment_data_file_name ON public.equipment_data USING btree (file_name);
+
+-- Index on public.equipment_data
+CREATE INDEX idx_equipment_data_manufacturer ON public.equipment_data USING btree (manufacturer);
+
+-- Index on public.equipment_data
+CREATE INDEX idx_equipment_data_position ON public.equipment_data USING btree ("position");
+
+-- Index on public.excel_data
+CREATE INDEX idx_excel_data_created_at ON public.excel_data USING btree (created_at DESC);
+
+-- Index on public.excel_data
+CREATE INDEX idx_excel_data_file_name ON public.excel_data USING btree (file_name);
+
 -- Index on public.users
 CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email);
 
@@ -2672,8 +2753,14 @@ GRANT supabase_realtime_admin TO postgres;
 -- GRANT CREATE, USAGE ON SCHEMA extensions TO postgres;
 -- GRANT USAGE ON SCHEMA graphql TO postgres;
 -- GRANT USAGE ON SCHEMA graphql_public TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_21 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_23 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_temp_43 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_58 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_21 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_23 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_43 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_58 TO postgres;
 -- GRANT USAGE ON SCHEMA pgbouncer TO postgres;
 -- GRANT CREATE, USAGE ON SCHEMA public TO postgres;
 -- GRANT CREATE, USAGE ON SCHEMA realtime TO postgres;
@@ -2706,8 +2793,14 @@ CREATE ROLE supabase_admin WITH SUPERUSER CREATEDB CREATEROLE LOGIN REPLICATION 
 -- GRANT CREATE, USAGE ON SCHEMA extensions TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA graphql TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA graphql_public TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_21 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_23 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_temp_43 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_58 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_21 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_23 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_43 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_58 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pgbouncer TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA public TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA realtime TO supabase_admin;
@@ -2732,8 +2825,14 @@ GRANT pg_read_all_data TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA extensions TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA graphql TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA graphql_public TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_21 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_23 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_temp_43 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_58 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_21 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_23 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_43 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_58 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pgbouncer TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA public TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA realtime TO supabase_etl_admin;
@@ -2750,8 +2849,14 @@ GRANT pg_read_all_data TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA extensions TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA graphql TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA graphql_public TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_21 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_23 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_temp_43 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_58 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_21 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_23 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_43 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_58 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pgbouncer TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA public TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA realtime TO supabase_read_only_user;
