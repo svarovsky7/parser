@@ -1,10 +1,44 @@
 import { useState, useEffect } from 'react'
-import './App.css'
+import { 
+  Layout, 
+  Table, 
+  Button, 
+  Space, 
+  Tag, 
+  Card, 
+  Input, 
+  Select, 
+  Statistic, 
+  Row, 
+  Col,
+  Typography,
+  Alert,
+  Badge,
+  Popconfirm,
+  message,
+  Spin,
+  Empty,
+  ConfigProvider,
+  theme
+} from 'antd'
+import {
+  DeleteOutlined,
+  ClearOutlined,
+  SearchOutlined,
+  ReloadOutlined,
+  EditOutlined,
+  WarningOutlined,
+  LoadingOutlined
+} from '@ant-design/icons'
 import { supabase } from './lib/supabase'
 import { useEquipmentData } from './hooks/useEquipmentData'
 import { EquipmentFileUpload } from './components/EquipmentFileUpload'
-import { EditableCell } from './components/EditableCell'
 import type { Database } from './types/supabase'
+import type { ColumnsType } from 'antd/es/table'
+
+const { Header, Content } = Layout
+const { Title, Text } = Typography
+const { Search } = Input
 
 type EquipmentInsert = Database['public']['Tables']['equipment_data']['Insert']
 type EquipmentData = Database['public']['Tables']['equipment_data']['Row']
@@ -14,8 +48,18 @@ function App() {
   const [isSaving, setIsSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>('all')
-  const [editingCell, setEditingCell] = useState<string | null>(null)
-  const { equipmentData, loading, error, addEquipmentData, deleteEquipmentData, clearAllData, updateEquipmentData, refetch } = useEquipmentData()
+  const [editingKey, setEditingKey] = useState('')
+  const [messageApi, contextHolder] = message.useMessage()
+  
+  const { 
+    equipmentData, 
+    loading, 
+    addEquipmentData, 
+    deleteEquipmentData, 
+    clearAllData, 
+    updateEquipmentData, 
+    refetch 
+  } = useEquipmentData()
 
   useEffect(() => {
     checkConnection()
@@ -25,7 +69,7 @@ function App() {
     try {
       const { error } = await supabase.from('equipment_data').select('count').limit(1)
       if (error && error.code === '42P01') {
-        console.log('Таблица equipment_data не существует. Создайте её в Supabase Dashboard используя файл supabase/schemes/equipment_data.sql')
+        console.log('Таблица equipment_data не существует')
         setConnectionStatus('error')
       } else if (error) {
         console.error('Ошибка подключения:', error)
@@ -46,8 +90,9 @@ function App() {
       const { error } = await addEquipmentData(equipmentRows)
       if (error) {
         console.error('Ошибка при сохранении данных:', error)
-        alert('❌ Ошибка при сохранении данных в базу')
+        messageApi.error('Ошибка при сохранении данных в базу')
       } else {
+        messageApi.success(`Успешно сохранено ${equipmentRows.length} записей`)
         refetch()
       }
     } finally {
@@ -56,41 +101,48 @@ function App() {
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm('Удалить эту запись?')) {
-      const { error } = await deleteEquipmentData(id)
-      if (error) {
-        console.error('Ошибка при удалении:', error)
-        alert('❌ Ошибка при удалении записи')
-      }
+    const { error } = await deleteEquipmentData(id)
+    if (error) {
+      console.error('Ошибка при удалении:', error)
+      messageApi.error('Ошибка при удалении записи')
+    } else {
+      messageApi.success('Запись удалена')
     }
   }
 
   const handleClearAll = async () => {
-    const totalRecords = equipmentData.length
-    if (totalRecords === 0) {
-      alert('База данных уже пуста')
-      return
-    }
-    
-    if (confirm(`⚠️ Вы уверены, что хотите удалить все записи (${totalRecords} шт.)?\n\nЭто действие нельзя отменить!`)) {
-      const { error } = await clearAllData()
-      if (error) {
-        console.error('Ошибка при очистке базы данных:', error)
-        alert('❌ Ошибка при очистке базы данных')
-      } else {
-        alert('✅ База данных успешно очищена')
-        refetch()
-      }
+    const { error } = await clearAllData()
+    if (error) {
+      console.error('Ошибка при очистке базы данных:', error)
+      messageApi.error('Ошибка при очистке базы данных')
+    } else {
+      messageApi.success('База данных очищена')
+      refetch()
     }
   }
 
-  const handleUpdateField = async (itemId: string, field: keyof EquipmentData, value: string | number | null) => {
-    const { error } = await updateEquipmentData(itemId, { [field]: value })
-    if (error) {
-      console.error('Ошибка при обновлении:', error)
-      alert('❌ Ошибка при сохранении изменений')
+  const save = async (record: EquipmentData) => {
+    try {
+      const { error } = await updateEquipmentData(record.id, record)
+      if (error) {
+        messageApi.error('Ошибка при сохранении изменений')
+      } else {
+        messageApi.success('Изменения сохранены')
+        setEditingKey('')
+      }
+    } catch (errInfo) {
+      console.log('Save failed:', errInfo)
     }
-    setEditingCell(null)
+  }
+
+  const isEditing = (record: EquipmentData) => record.id === editingKey
+
+  const edit = (record: EquipmentData) => {
+    setEditingKey(record.id)
+  }
+
+  const cancel = () => {
+    setEditingKey('')
   }
 
   // Фильтрация данных
@@ -106,23 +158,11 @@ function App() {
     return matchesSearch && matchesManufacturer
   })
 
-  // Группируем данные по файлам
-  const groupedData = filteredData.reduce((acc, item) => {
-    if (!acc[item.file_name]) {
-      acc[item.file_name] = []
-    }
-    acc[item.file_name].push(item)
-    return acc
-  }, {} as Record<string, typeof equipmentData>)
-
-  // Подсчет общего количества по производителям
+  // Подсчет статистики
   const manufacturerStats = equipmentData.reduce((acc, item) => {
     if (item.manufacturer) {
       if (!acc[item.manufacturer]) {
-        acc[item.manufacturer] = {
-          count: 0,
-          totalQuantity: 0
-        }
+        acc[item.manufacturer] = { count: 0, totalQuantity: 0 }
       }
       acc[item.manufacturer].count++
       acc[item.manufacturer].totalQuantity += item.quantity || 0
@@ -130,471 +170,336 @@ function App() {
     return acc
   }, {} as Record<string, { count: number; totalQuantity: number }>)
 
-  // Получаем уникальных производителей для фильтра
   const manufacturers = Array.from(new Set(equipmentData.map(item => item.manufacturer).filter(Boolean))) as string[]
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#f5f6fa' }}>
-      {/* Хедер */}
-      <header style={{ 
-        background: 'white',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100
-      }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h1 style={{ margin: 0, fontSize: '28px', color: '#2c3e50' }}>
-              🏭 Система учета оборудования
-            </h1>
-            
-            {/* Статус подключения */}
-            <div style={{
-              padding: '8px 16px',
-              borderRadius: '20px',
-              fontSize: '14px',
-              fontWeight: '500',
-              background: connectionStatus === 'connected' ? '#d4edda' : connectionStatus === 'error' ? '#f8d7da' : '#fff3cd',
-              color: connectionStatus === 'connected' ? '#155724' : connectionStatus === 'error' ? '#721c24' : '#856404',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <div style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: connectionStatus === 'connected' ? '#28a745' : connectionStatus === 'error' ? '#dc3545' : '#ffc107',
-                animation: connectionStatus === 'checking' ? 'pulse 1.5s infinite' : 'none'
-              }} />
-              {connectionStatus === 'checking' && 'Подключение...'}
-              {connectionStatus === 'connected' && 'Подключено'}
-              {connectionStatus === 'error' && 'Ошибка подключения'}
-            </div>
-          </div>
-        </div>
-      </header>
+  // Колонки таблицы
+  const columns: ColumnsType<EquipmentData> = [
+    {
+      title: 'Позиция',
+      dataIndex: 'position',
+      key: 'position',
+      width: 100,
+      sorter: (a, b) => (a.position || 0) - (b.position || 0),
+      render: (text) => <Tag color="blue">{text || '-'}</Tag>,
+    },
+    {
+      title: 'Наименование',
+      dataIndex: 'name_and_specs',
+      key: 'name_and_specs',
+      ellipsis: true,
+      editable: true,
+    },
+    {
+      title: 'Тип/Марка',
+      dataIndex: 'type_mark_docs',
+      key: 'type_mark_docs',
+      ellipsis: true,
+      editable: true,
+    },
+    {
+      title: 'Код',
+      dataIndex: 'equipment_code',
+      key: 'equipment_code',
+      width: 150,
+      editable: true,
+    },
+    {
+      title: 'Производитель',
+      dataIndex: 'manufacturer',
+      key: 'manufacturer',
+      width: 150,
+      filters: manufacturers.map(m => ({ text: m, value: m })),
+      onFilter: (value, record) => record.manufacturer === value,
+      render: (text) => text ? <Tag color="green">{text}</Tag> : '-',
+      editable: true,
+    },
+    {
+      title: 'Ед. изм.',
+      dataIndex: 'unit_measure',
+      key: 'unit_measure',
+      width: 100,
+      align: 'center',
+      editable: true,
+    },
+    {
+      title: 'Кол-во',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 100,
+      align: 'center',
+      sorter: (a, b) => (a.quantity || 0) - (b.quantity || 0),
+      render: (text) => <strong>{text || 0}</strong>,
+      editable: true,
+    },
+    {
+      title: 'Действия',
+      key: 'action',
+      width: 150,
+      fixed: 'right',
+      render: (_, record) => {
+        const editable = isEditing(record)
+        return editable ? (
+          <Space>
+            <Button type="primary" size="small" onClick={() => save(record)}>
+              Сохранить
+            </Button>
+            <Button size="small" onClick={cancel}>
+              Отмена
+            </Button>
+          </Space>
+        ) : (
+          <Space>
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              size="small"
+              onClick={() => edit(record)}
+              disabled={editingKey !== ''}
+            />
+            <Popconfirm
+              title="Удалить запись?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Да"
+              cancelText="Нет"
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          </Space>
+        )
+      },
+    },
+  ]
 
-      {connectionStatus === 'error' && (
-        <div style={{ 
-          background: '#f8d7da',
-          color: '#721c24',
-          padding: '16px',
-          borderBottom: '1px solid #f5c6cb'
-        }}>
-          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <strong>⚠️ Внимание:</strong> Выполните SQL из файла <code style={{ 
-              background: '#fff',
-              padding: '2px 6px',
-              borderRadius: '3px',
-              fontSize: '13px'
-            }}>supabase/schemes/equipment_data.sql</code> в Supabase Dashboard
-          </div>
-        </div>
-      )}
+  const mergedColumns = columns.map((col) => {
+    if (!col.editable) {
+      return col
+    }
+    return {
+      ...col,
+      onCell: (record: EquipmentData) => ({
+        record,
+        inputType: col.dataIndex === 'quantity' || col.dataIndex === 'position' ? 'number' : 'text',
+        dataIndex: col.dataIndex,
+        title: col.title,
+        editing: isEditing(record),
+      }),
+    }
+  })
 
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '30px 20px' }}>
-        {connectionStatus === 'connected' && (
-          <>
-            {/* Секция загрузки */}
-            <EquipmentFileUpload onDataParsed={handleDataParsed} />
-            
-            {isSaving && (
-              <div style={{ 
-                padding: '20px',
-                textAlign: 'center',
-                background: 'white',
-                borderRadius: '12px',
-                marginBottom: '30px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-              }}>
-                <strong>⏳ Сохранение данных...</strong>
-              </div>
-            )}
+  const EditableCell = ({
+    editing,
+    dataIndex,
+    inputType,
+    record,
+    children,
+    ...restProps
+  }: {
+    editing: boolean
+    dataIndex: string
+    inputType: string
+    record: EquipmentData
+    children: React.ReactNode
+  }) => {
 
-            {/* Статистика */}
-            {Object.keys(manufacturerStats).length > 0 && (
-              <div style={{ 
-                marginBottom: '30px',
-                background: 'white',
-                borderRadius: '12px',
-                padding: '24px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-              }}>
-                <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#2c3e50' }}>
-                  📊 Статистика по производителям
-                </h3>
-                <div style={{ 
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                  gap: '16px'
-                }}>
-                  {Object.entries(manufacturerStats).map(([manufacturer, stats]) => (
-                    <div key={manufacturer} style={{ 
-                      padding: '16px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      borderRadius: '8px',
-                      color: 'white'
-                    }}>
-                      <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
-                        {manufacturer}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', opacity: 0.9 }}>
-                        <span>Позиций: {stats.count}</span>
-                        <span>Всего: {stats.totalQuantity}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Секция данных */}
-            <div style={{ 
-              background: 'white',
-              borderRadius: '12px',
-              padding: '24px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-            }}>
-              {/* Заголовок и управление */}
-              <div style={{ marginBottom: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 style={{ margin: 0, fontSize: '20px', color: '#2c3e50' }}>
-                    📋 База данных оборудования
-                  </h2>
-                  {equipmentData.length > 0 && (
-                    <button
-                      onClick={handleClearAll}
-                      style={{
-                        padding: '10px 20px',
-                        cursor: 'pointer',
-                        background: 'white',
-                        color: '#dc3545',
-                        border: '2px solid #dc3545',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: 'bold',
-                        transition: 'all 0.2s ease'
-                      }}
-                      onMouseOver={e => {
-                        e.currentTarget.style.background = '#dc3545'
-                        e.currentTarget.style.color = 'white'
-                      }}
-                      onMouseOut={e => {
-                        e.currentTarget.style.background = 'white'
-                        e.currentTarget.style.color = '#dc3545'
-                      }}
-                    >
-                      🗑️ Очистить базу
-                    </button>
-                  )}
-                </div>
-
-                {/* Фильтры */}
-                {equipmentData.length > 0 && (
-                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                    <input
-                      type="text"
-                      placeholder="🔍 Поиск по всем полям..."
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                      style={{
-                        flex: '1 1 300px',
-                        padding: '10px 16px',
-                        border: '2px solid #e0e0e0',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        transition: 'border-color 0.2s ease'
-                      }}
-                      onFocus={e => e.currentTarget.style.borderColor = '#667eea'}
-                      onBlur={e => e.currentTarget.style.borderColor = '#e0e0e0'}
-                    />
-                    
-                    <select
-                      value={selectedManufacturer}
-                      onChange={e => setSelectedManufacturer(e.target.value)}
-                      style={{
-                        padding: '10px 16px',
-                        border: '2px solid #e0e0e0',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        background: 'white',
-                        cursor: 'pointer',
-                        minWidth: '200px'
-                      }}
-                    >
-                      <option value="all">Все производители</option>
-                      {manufacturers.map(manufacturer => (
-                        <option key={manufacturer} value={manufacturer}>
-                          {manufacturer} ({manufacturerStats[manufacturer]?.count || 0})
-                        </option>
-                      ))}
-                    </select>
-
-                    {(searchTerm || selectedManufacturer !== 'all') && (
-                      <button
-                        onClick={() => {
-                          setSearchTerm('')
-                          setSelectedManufacturer('all')
-                        }}
-                        style={{
-                          padding: '10px 16px',
-                          background: '#f0f0f0',
-                          border: 'none',
-                          borderRadius: '8px',
-                          fontSize: '14px',
-                          cursor: 'pointer',
-                          fontWeight: '500'
-                        }}
-                      >
-                        ✖️ Сбросить
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Данные */}
-              {loading && (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                  <div style={{ fontSize: '24px', marginBottom: '12px' }}>⏳</div>
-                  Загрузка данных...
-                </div>
-              )}
-              
-              {error && (
-                <div style={{ 
-                  padding: '20px',
-                  background: '#f8d7da',
-                  color: '#721c24',
-                  borderRadius: '8px'
-                }}>
-                  ❌ Ошибка: {error.message}
-                </div>
-              )}
-              
-              {!loading && !error && equipmentData.length === 0 && (
-                <div style={{ 
-                  textAlign: 'center',
-                  padding: '60px 20px',
-                  background: '#f8f9fa',
-                  borderRadius: '8px'
-                }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>📭</div>
-                  <h3 style={{ fontSize: '20px', color: '#495057', marginBottom: '8px' }}>
-                    База данных пуста
-                  </h3>
-                  <p style={{ color: '#6c757d', fontSize: '14px' }}>
-                    Загрузите Excel файл со спецификацией оборудования
-                  </p>
-                </div>
-              )}
-              
-              {!loading && !error && filteredData.length === 0 && equipmentData.length > 0 && (
-                <div style={{ 
-                  textAlign: 'center',
-                  padding: '40px',
-                  background: '#fff3cd',
-                  borderRadius: '8px',
-                  color: '#856404'
-                }}>
-                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔍</div>
-                  Ничего не найдено по вашему запросу
-                </div>
-              )}
-              
-              {!loading && !error && Object.keys(groupedData).length > 0 && (
-                <div>
-                  <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '14px', color: '#6c757d' }}>
-                      Найдено записей: <strong>{filteredData.length}</strong> из <strong>{equipmentData.length}</strong>
-                    </div>
-                    <div style={{ 
-                      fontSize: '13px', 
-                      color: '#667eea',
-                      background: '#f0f2ff',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      <span>💡</span>
-                      <span>Нажмите на любое поле для редактирования</span>
-                    </div>
-                  </div>
-                  
-                  {Object.entries(groupedData).map(([fileName, items]) => (
-                    <div key={fileName} style={{ marginBottom: '24px' }}>
-                      <div style={{ 
-                        background: '#f8f9fa',
-                        padding: '12px 16px',
-                        borderRadius: '8px 8px 0 0',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '20px' }}>📄</span>
-                          <div>
-                            <div style={{ fontWeight: 'bold', color: '#2c3e50' }}>{fileName}</div>
-                            <div style={{ fontSize: '12px', color: '#6c757d' }}>
-                              Загружено: {new Date(items[0].created_at).toLocaleString('ru-RU')}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ 
-                          background: '#667eea',
-                          color: 'white',
-                          padding: '4px 12px',
-                          borderRadius: '12px',
-                          fontSize: '14px',
-                          fontWeight: 'bold'
-                        }}>
-                          {items.length}
-                        </div>
-                      </div>
-                      
-                      <div style={{ 
-                        border: '1px solid #dee2e6',
-                        borderTop: 'none',
-                        borderRadius: '0 0 8px 8px',
-                        overflow: 'hidden'
-                      }}>
-                        <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ background: '#f8f9fa' }}>
-                                <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Поз.</th>
-                                <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Наименование</th>
-                                <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Тип/Марка</th>
-                                <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Код</th>
-                                <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Производитель</th>
-                                <th style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Ед.</th>
-                                <th style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Кол-во</th>
-                                <th style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#495057' }}>Действия</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {items.map((item, index) => (
-                                <tr key={item.id} style={{ 
-                                  borderBottom: index < items.length - 1 ? '1px solid #f0f0f0' : 'none',
-                                  transition: 'background 0.2s ease'
-                                }}
-                                onMouseOver={e => e.currentTarget.style.background = '#fafafa'}
-                                onMouseOut={e => e.currentTarget.style.background = 'white'}>
-                                  <td style={{ padding: '4px', fontWeight: 'bold', color: '#667eea' }}>
-                                    <EditableCell
-                                      value={item.position}
-                                      onSave={(value) => handleUpdateField(item.id, 'position', value)}
-                                      type="number"
-                                      isEditing={editingCell === `${item.id}-position`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-position`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '4px', color: '#212529', fontSize: '14px' }}>
-                                    <EditableCell
-                                      value={item.name_and_specs}
-                                      onSave={(value) => handleUpdateField(item.id, 'name_and_specs', value)}
-                                      type="text"
-                                      isEditing={editingCell === `${item.id}-name_and_specs`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-name_and_specs`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '4px', color: '#6c757d', fontSize: '13px' }}>
-                                    <EditableCell
-                                      value={item.type_mark_docs}
-                                      onSave={(value) => handleUpdateField(item.id, 'type_mark_docs', value)}
-                                      type="text"
-                                      isEditing={editingCell === `${item.id}-type_mark_docs`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-type_mark_docs`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '4px', color: '#6c757d', fontSize: '13px' }}>
-                                    <EditableCell
-                                      value={item.equipment_code}
-                                      onSave={(value) => handleUpdateField(item.id, 'equipment_code', value)}
-                                      type="text"
-                                      isEditing={editingCell === `${item.id}-equipment_code`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-equipment_code`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '4px', color: '#28a745', fontWeight: '500' }}>
-                                    <EditableCell
-                                      value={item.manufacturer}
-                                      onSave={(value) => handleUpdateField(item.id, 'manufacturer', value)}
-                                      type="text"
-                                      isEditing={editingCell === `${item.id}-manufacturer`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-manufacturer`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '4px', textAlign: 'center', color: '#6c757d', fontSize: '13px' }}>
-                                    <EditableCell
-                                      value={item.unit_measure}
-                                      onSave={(value) => handleUpdateField(item.id, 'unit_measure', value)}
-                                      type="text"
-                                      isEditing={editingCell === `${item.id}-unit_measure`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-unit_measure`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold', color: '#212529' }}>
-                                    <EditableCell
-                                      value={item.quantity}
-                                      onSave={(value) => handleUpdateField(item.id, 'quantity', value)}
-                                      type="number"
-                                      isEditing={editingCell === `${item.id}-quantity`}
-                                      onStartEdit={() => setEditingCell(`${item.id}-quantity`)}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                                    <button
-                                      onClick={() => handleDelete(item.id)}
-                                      style={{
-                                        padding: '6px 12px',
-                                        background: 'white',
-                                        color: '#dc3545',
-                                        border: '1px solid #dc3545',
-                                        borderRadius: '4px',
-                                        fontSize: '12px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                      onMouseOver={e => {
-                                        e.currentTarget.style.background = '#dc3545'
-                                        e.currentTarget.style.color = 'white'
-                                      }}
-                                      onMouseOut={e => {
-                                        e.currentTarget.style.background = 'white'
-                                        e.currentTarget.style.color = '#dc3545'
-                                      }}
-                                    >
-                                      Удалить
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
+    return (
+      <td {...restProps}>
+        {editing ? (
+          <Input
+            defaultValue={record[dataIndex]}
+            onBlur={(e) => {
+              record[dataIndex] = inputType === 'number' ? 
+                parseFloat(e.target.value) || null : 
+                e.target.value
+            }}
+            onPressEnter={() => save(record)}
+          />
+        ) : (
+          children
         )}
-      </div>
+      </td>
+    )
+  }
 
-      <style>{`
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-      `}</style>
-    </div>
+  return (
+    <ConfigProvider
+      theme={{
+        algorithm: theme.defaultAlgorithm,
+        token: {
+          colorPrimary: '#667eea',
+        },
+      }}
+    >
+      {contextHolder}
+      <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+        <Header style={{ 
+          background: '#fff', 
+          padding: '0 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        }}>
+          <Title level={3} style={{ margin: 0 }}>
+            🏭 Система учета оборудования
+          </Title>
+          
+          <Badge 
+            status={connectionStatus === 'connected' ? 'success' : connectionStatus === 'error' ? 'error' : 'processing'}
+            text={
+              connectionStatus === 'connected' ? 'Подключено' :
+              connectionStatus === 'error' ? 'Ошибка подключения' :
+              'Подключение...'
+            }
+          />
+        </Header>
+
+        <Content style={{ padding: '24px' }}>
+          {connectionStatus === 'error' && (
+            <Alert
+              message="Ошибка подключения к базе данных"
+              description="Выполните SQL из файла supabase/schemes/equipment_data.sql в Supabase Dashboard"
+              type="error"
+              showIcon
+              icon={<WarningOutlined />}
+              style={{ marginBottom: 24 }}
+            />
+          )}
+
+          {connectionStatus === 'connected' && (
+            <>
+              <EquipmentFileUpload onDataParsed={handleDataParsed} />
+
+              {isSaving && (
+                <Card style={{ marginBottom: 24, textAlign: 'center' }}>
+                  <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+                  <Text style={{ marginLeft: 12 }}>Сохранение данных...</Text>
+                </Card>
+              )}
+
+              {/* Статистика */}
+              {Object.keys(manufacturerStats).length > 0 && (
+                <Card title="📊 Статистика по производителям" style={{ marginBottom: 24 }}>
+                  <Row gutter={16}>
+                    {Object.entries(manufacturerStats).map(([manufacturer, stats]) => (
+                      <Col span={6} key={manufacturer}>
+                        <Card size="small" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                          <Statistic
+                            title={<Text style={{ color: 'white' }}>{manufacturer}</Text>}
+                            value={stats.totalQuantity}
+                            suffix={`шт. (${stats.count} поз.)`}
+                            valueStyle={{ color: 'white', fontSize: 20 }}
+                          />
+                        </Card>
+                      </Col>
+                    ))}
+                  </Row>
+                </Card>
+              )}
+
+              {/* Таблица данных */}
+              <Card 
+                title="📋 База данных оборудования"
+                extra={
+                  <Space>
+                    <Button 
+                      icon={<ReloadOutlined />} 
+                      onClick={refetch}
+                    >
+                      Обновить
+                    </Button>
+                    {equipmentData.length > 0 && (
+                      <Popconfirm
+                        title="Очистить базу данных?"
+                        description={`Будет удалено ${equipmentData.length} записей. Это действие нельзя отменить.`}
+                        onConfirm={handleClearAll}
+                        okText="Да, очистить"
+                        cancelText="Отмена"
+                        okButtonProps={{ danger: true }}
+                      >
+                        <Button danger icon={<ClearOutlined />}>
+                          Очистить базу
+                        </Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                }
+              >
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  {/* Фильтры */}
+                  {equipmentData.length > 0 && (
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Search
+                          placeholder="Поиск по всем полям..."
+                          allowClear
+                          enterButton={<SearchOutlined />}
+                          size="large"
+                          onSearch={setSearchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Select
+                          placeholder="Все производители"
+                          style={{ width: '100%' }}
+                          size="large"
+                          value={selectedManufacturer}
+                          onChange={setSelectedManufacturer}
+                          options={[
+                            { value: 'all', label: 'Все производители' },
+                            ...manufacturers.map(m => ({ 
+                              value: m, 
+                              label: `${m} (${manufacturerStats[m]?.count || 0})` 
+                            }))
+                          ]}
+                        />
+                      </Col>
+                      <Col span={4}>
+                        {(searchTerm || selectedManufacturer !== 'all') && (
+                          <Button 
+                            size="large"
+                            onClick={() => {
+                              setSearchTerm('')
+                              setSelectedManufacturer('all')
+                            }}
+                          >
+                            Сбросить фильтры
+                          </Button>
+                        )}
+                      </Col>
+                    </Row>
+                  )}
+
+                  {/* Таблица */}
+                  <Table
+                    components={{
+                      body: {
+                        cell: EditableCell,
+                      },
+                    }}
+                    bordered
+                    dataSource={filteredData}
+                    columns={mergedColumns}
+                    rowKey="id"
+                    loading={loading}
+                    locale={{
+                      emptyText: <Empty description="Нет данных" />
+                    }}
+                    pagination={{
+                      pageSize: 10,
+                      showSizeChanger: true,
+                      showTotal: (total, range) => `${range[0]}-${range[1]} из ${total} записей`,
+                    }}
+                    scroll={{ x: 1200 }}
+                    size="middle"
+                  />
+                </Space>
+              </Card>
+            </>
+          )}
+        </Content>
+      </Layout>
+    </ConfigProvider>
   )
 }
 
