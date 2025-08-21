@@ -20,57 +20,78 @@ npm run preview
 
 ## Architecture
 
-React + TypeScript application built with Vite, integrated with Supabase for backend services.
+Equipment Management System - React + TypeScript application built with Vite, integrated with Supabase backend. The application allows users to import equipment data from Excel files, manage inventory, and perform CRUD operations on equipment records.
 
 ### Core Structure
-- **Entry**: `src/main.tsx` renders App component to DOM
-- **Supabase Client**: `src/lib/supabase.ts` - centralized client configuration
-- **Data Hooks**: `src/hooks/useSupabase.ts` - CRUD operations for database entities
-- **Type Definitions**: `src/types/supabase.ts` - database schema types
-- **Main UI**: `src/App.tsx` - user management interface with connection status
+- **Entry**: `src/main.tsx` - Application entry point rendering to DOM
+- **Main Application**: `src/App.tsx` - Equipment management interface with:
+  - Connection status monitoring
+  - Excel file upload and parsing
+  - Data filtering and search
+  - Inline editing capabilities
+  - Manufacturer statistics
+  
+### Data Layer
+- **Supabase Client**: `src/lib/supabase.ts` - Centralized Supabase client configuration
+- **Custom Hooks**: 
+  - `src/hooks/useEquipmentData.ts` - Equipment CRUD operations with optimistic updates
+  - Provides: fetchEquipmentData, addEquipmentData, deleteEquipmentData, clearAllData, updateEquipmentData
+- **Type Definitions**: `src/types/supabase.ts` - Database schema types for equipment_data table
 
-### Build Configuration
-- **Vite**: Fast HMR, ES modules, React plugin
-- **TypeScript**: Strict mode, bundler module resolution, React JSX transform
-- **ESLint**: TypeScript-ESLint + React Hooks plugins
+### Components
+- **EquipmentFileUpload**: `src/components/EquipmentFileUpload.tsx`
+  - Excel file parsing with XLSX library
+  - Column mapping from Excel headers to database fields
+  - Multi-step upload process with preview
+  - Automatic field type conversion (numbers for position/quantity)
 
-## Supabase Setup
+### UI Framework
+- **Ant Design (antd)**: Primary UI component library
+- **Ant Design Icons**: Icon components
+- **Custom theme**: Purple primary color (#667eea)
 
-### Required Environment Variables
+## Database Schema
+
+The complete database schema is defined in `supabase/schemes/prod.sql`. 
+
+Main table: **equipment_data**
+- `id`: UUID primary key
+- `file_name`: Source Excel file name
+- `position`: Item position number
+- `name_and_specs`: Equipment name and specifications
+- `type_mark_docs`: Type, mark, and documentation
+- `equipment_code`: Equipment code/catalog number
+- `manufacturer`: Manufacturer name
+- `unit_measure`: Unit of measurement
+- `quantity`: Quantity in stock
+- `created_at`, `updated_at`: Timestamps
+
+## Excel Import Mapping
+
+The system automatically maps Excel column headers to database fields:
+- Позиция → position
+- Наименования и технические характеристики → name_and_specs
+- Тип, марка, обозначение документов → type_mark_docs
+- Код оборудования → equipment_code
+- Завод изготовитель → manufacturer
+- Единица измерения → unit_measure
+- Кол-во/Количество → quantity
+
+Headers are normalized (trimmed, spaces collapsed) and matched case-insensitively.
+
+## Environment Variables
+
+Required in `.env`:
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### Database Schema
-**IMPORTANT**: The complete and authoritative database schema (tables, views, functions, triggers, policies) is defined in `supabase/schemes/prod.sql`. This file contains the full production database structure exported from Supabase.
-
-Always refer to `supabase/schemes/prod.sql` for:
-- Current table structures
-- Indexes and constraints
-- Functions and triggers
-- RLS policies
-- Any database modifications
-
-See `README_SUPABASE.md` for initial setup instructions and troubleshooting.
-
-### Data Operations Pattern
-The `useUsers()` hook in `src/hooks/useSupabase.ts` provides:
-- Automatic data fetching on mount
-- CRUD operations with optimistic updates
-- Error handling and loading states
-- Type-safe operations via generated types
-
-When adding new tables:
-1. Create table in Supabase Dashboard
-2. Update types in `src/types/supabase.ts`
-3. Create corresponding hook in `src/hooks/`
-4. Follow existing patterns for state management
-
 ## Key Dependencies
 
-- **@supabase/supabase-js**: ^2.55.0 - Supabase client
+- **@supabase/supabase-js**: ^2.55.0 - Database client
+- **antd**: ^5.27.1 - UI components
+- **xlsx**: ^0.18.5 - Excel file parsing
 - **react**: ^19.1.1 - UI library
 - **typescript**: ~5.8.3 - Type safety
 - **vite**: ^7.1.2 - Build tool
-- **eslint**: ^9.33.0 - Code quality

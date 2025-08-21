@@ -12,10 +12,19 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@supabase/supabase-js": "^2.55.0",
+    "@tailwindcss/forms": "^0.5.10",
+    "ag-grid-community": "^34.1.1",
+    "ag-grid-react": "^34.1.1",
     "antd": "^5.27.1",
+    "immer": "^10.1.1",
+    "lucide-react": "^0.540.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "xlsx": "^0.18.5"
+    "tailwindcss": "^4.1.12",
+    "uuid": "^11.1.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.0.17",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
