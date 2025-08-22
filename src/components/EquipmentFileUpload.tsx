@@ -256,7 +256,7 @@ export function EquipmentFileUpload({ onDataParsed }: EquipmentFileUploadProps) 
             <Table
               dataSource={parsedData.slice(0, 5)}
               columns={columns}
-              rowKey={(record, index) => index?.toString() || ''}
+              rowKey={(_, index) => index?.toString() || ''}
               pagination={false}
               size="small"
               scroll={{ x: 1000 }}

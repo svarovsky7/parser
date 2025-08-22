@@ -10,6 +10,7 @@ export interface MaterialRow {
   specRef: string               // Спецификация/узел (например, LED-003)
   price: number                 // Стоимость за ед.
   priceSource: string           // Основание (База 1С, Tinko.ru и т.п.)
+  productCode: string           // Код товара
   notes?: string
   createdAt: string
   updatedAt: string

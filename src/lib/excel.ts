@@ -28,6 +28,7 @@ const COLUMN_MAPPING: Record<string, keyof MaterialRow> = {
   'Цена': 'price',
   'Основание': 'priceSource',
   'Источник': 'priceSource',
+  'Код товара': 'productCode',
   'Примечания': 'notes',
   'Примечание': 'notes'
 }
@@ -100,6 +101,7 @@ export async function parseExcel(file: File): Promise<ImportResult> {
         specRef: sanitized.specRef || '',
         price: parsePrice(mappedData.price) || 0,
         priceSource: sanitized.priceSource || '',
+        productCode: sanitized.productCode || '',
         notes: sanitized.notes,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -145,6 +147,7 @@ export function exportToExcel(rows: MaterialRow[], filename = 'materials.xlsx') 
     'Спецификация': row.specRef,
     'Цена': row.price,
     'Основание': row.priceSource,
+    'Код товара': row.productCode,
     'Примечания': row.notes || ''
   }))
   
@@ -164,6 +167,7 @@ export function exportToExcel(rows: MaterialRow[], filename = 'materials.xlsx') 
     { wch: 15 }, // Спецификация
     { wch: 12 }, // Цена
     { wch: 15 }, // Основание
+    { wch: 15 }, // Код товара
     { wch: 30 }  // Примечания
   ]
   worksheet['!cols'] = colWidths
@@ -186,6 +190,7 @@ export function getDemoData(): MaterialRow[] {
       specRef: 'LED-003',
       price: 3500,
       priceSource: 'Tinko.ru',
+      productCode: 'GALA-001',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     },
@@ -201,6 +206,7 @@ export function getDemoData(): MaterialRow[] {
       specRef: 'LIGHT-002',
       price: 1800,
       priceSource: 'База 1С',
+      productCode: 'ELF-002',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     },
@@ -216,6 +222,7 @@ export function getDemoData(): MaterialRow[] {
       specRef: 'POLE-001',
       price: 15000,
       priceSource: 'База 1С',
+      productCode: 'BLV-003',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     },
@@ -231,6 +238,7 @@ export function getDemoData(): MaterialRow[] {
       specRef: 'MOUNT-001',
       price: 850,
       priceSource: 'ETM.ru',
+      productCode: 'MPE-004',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     },
@@ -246,6 +254,7 @@ export function getDemoData(): MaterialRow[] {
       specRef: 'AUTO-001',
       price: 1200,
       priceSource: 'Tinko.ru',
+      productCode: 'DA63-005',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }

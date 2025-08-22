@@ -103,6 +103,12 @@ export const Grid: React.FC = () => {
       }
     },
     {
+      field: 'productCode',
+      headerName: 'Код товара',
+      width: 150,
+      editable: true
+    },
+    {
       field: 'notes',
       headerName: 'Примечания',
       flex: 1,

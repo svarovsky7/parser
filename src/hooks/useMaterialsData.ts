@@ -2,7 +2,17 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Database } from '../types/supabase'
 
-type MaterialsDatabase = Database['public']['Tables']['materials_database']['Row']
+// Используем prise_list_etm как источник материалов для подбора
+interface MaterialsDatabase {
+  id: number
+  code: string
+  name: string
+  manufacturer: string
+  unit: string
+  price: number
+  source: string
+}
+
 type MaterialsData = Database['public']['Tables']['materials_data']['Row']
 type MaterialsDataInsert = Database['public']['Tables']['materials_data']['Insert']
 
@@ -20,16 +30,37 @@ export function useMaterialsData() {
   async function fetchMaterialsDatabase() {
     try {
       setLoading(true)
+      console.log('🔍 Загрузка материалов из prise_list_etm...')
+      
+      // Загружаем данные из таблицы prise_list_etm для подбора материалов
       const { data, error } = await supabase
-        .from('materials_database')
-        .select('*')
-        .order('code', { ascending: true })
+        .from('prise_list_etm')
+        .select('id, name, brand, article, brand_code')
+        .limit(5000) // Ограничиваем количество для производительности
+        .order('id', { ascending: true })
 
-      if (error) throw error
-      setMaterialsDatabase(data || [])
+      if (error) {
+        console.error('❌ Ошибка загрузки из prise_list_etm:', error)
+        throw error
+      }
+      
+      // Преобразуем данные в формат MaterialsDatabase
+      const materials: MaterialsDatabase[] = (data || []).map(item => ({
+        id: item.id,
+        code: item.brand_code || item.article || `ID${item.id}`,
+        name: item.name || 'Без названия',
+        manufacturer: item.brand || 'Неизвестный',
+        unit: 'шт.',
+        price: 0,
+        source: 'prise_list_etm'
+      }))
+      
+      console.log(`✅ Загружено ${materials.length} материалов из prise_list_etm`)
+      setMaterialsDatabase(materials)
     } catch (err) {
       setError(err as Error)
-      console.error('Error fetching materials database:', err)
+      console.error('Error fetching materials from prise_list_etm:', err)
+      setMaterialsDatabase([])
     } finally {
       setLoading(false)
     }

@@ -30,14 +30,14 @@ export function useProductsData() {
           // Check existing products for this batch
           const batchIds = batch.map(p => p.id)
           const { data: existingProducts } = await supabase
-            .from('products')
+            .from('prise_list_etm')
             .select('id')
             .in('id', batchIds)
           
           const existingIds = new Set(existingProducts?.map(p => p.id) || [])
           const batchUpdatedCount = batch.filter(p => existingIds.has(p.id)).length
           
-          // Convert batch to database format
+          // Convert batch to database format (для таблицы prise_list_etm)
           const batchData = batch.map(product => ({
             id: Number(product.id),
             name: product.name || 'Не указано',
@@ -50,8 +50,8 @@ export function useProductsData() {
           }))
 
           // Upsert batch
-          const { data, error } = await supabase
-            .from('products')
+          const { error } = await supabase
+            .from('prise_list_etm')
             .upsert(batchData, { 
               onConflict: 'id',
               ignoreDuplicates: false 
@@ -62,7 +62,9 @@ export function useProductsData() {
             throw error
           }
 
-          totalImported += (data?.length || 0) - batchUpdatedCount
+          // Only count records that were actually processed
+          const batchNewCount = batch.length - batchUpdatedCount
+          totalImported += batchNewCount
           totalUpdated += batchUpdatedCount
           
           // Small delay to prevent overwhelming the server
@@ -107,9 +109,10 @@ export function useProductsData() {
     
     try {
       const { data, error } = await supabase
-        .from('products')
+        .from('prise_list_etm')
         .select('*')
         .order('id', { ascending: true })
+        .limit(1000) // Ограничиваем для отображения в таблице
 
       if (error) {
         throw error
@@ -124,13 +127,30 @@ export function useProductsData() {
     }
   }
 
+  const fetchProductsCount = async (): Promise<number> => {
+    try {
+      const { count, error } = await supabase
+        .from('prise_list_etm')
+        .select('*', { count: 'exact', head: true }) // Получаем только количество, не загружая данные
+
+      if (error) {
+        throw error
+      }
+
+      return count || 0
+    } catch (err) {
+      console.error('Ошибка получения количества товаров:', err)
+      return 0
+    }
+  }
+
   const deleteAllProducts = async () => {
     setLoading(true)
     setError(null)
     
     try {
       const { error } = await supabase
-        .from('products')
+        .from('prise_list_etm')
         .delete()
         .neq('id', -1) // Delete all records
 
@@ -152,6 +172,7 @@ export function useProductsData() {
     error,
     importProducts,
     fetchProducts,
+    fetchProductsCount,
     deleteAllProducts
   }
 }

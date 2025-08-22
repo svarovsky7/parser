@@ -20,6 +20,7 @@ export const MaterialRowSchema = z.object({
   specRef: z.string().optional().default(''),
   price: z.number().nonnegative('Цена не может быть отрицательной'),
   priceSource: z.string().optional().default(''),
+  productCode: z.string().optional().default(''),
   notes: z.string().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
@@ -39,6 +40,7 @@ export const MaterialRowImportSchema = z.object({
   specRef: z.string().optional().default(''),
   price: z.coerce.number().default(0),
   priceSource: z.string().optional().default(''),
+  productCode: z.string().optional().default(''),
   notes: z.string().optional()
 })
 
@@ -101,6 +103,7 @@ export function sanitizeImportData(data: any): Partial<MaterialRow> {
     specRef: data.specRef || '',
     price: Number(data.price) || 0,
     priceSource: data.priceSource || '',
+    productCode: String(data.productCode || ''),
     notes: data.notes || ''
   }
 }

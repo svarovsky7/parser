@@ -130,6 +130,7 @@ const MaterialsApp: React.FC = () => {
         price_unit: row.unit,
         price: row.price,
         source: row.priceSource,
+        product_code: row.productCode,
         file_name: 'manual_input'
       }))
 
@@ -162,7 +163,7 @@ const MaterialsApp: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div style={{ minHeight: 'calc(100vh - 80px)', backgroundColor: '#f9fafb', padding: '16px' }}>
       <div className="max-w-full mx-auto">
         {/* Заголовок */}
         <div className="mb-6">

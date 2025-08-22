@@ -2,9 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Upload, Save, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useMaterialsData } from '../hooks/useMaterialsData'
-import type { Database } from '../types/supabase'
-
-type MaterialsDataInsert = Database['public']['Tables']['materials_data']['Insert']
+import { supabase } from '../lib/supabase'
 
 interface MaterialData {
   id: number
@@ -19,6 +17,7 @@ interface MaterialData {
   priceUnit?: string
   price?: string
   source?: string
+  productCode?: string
 }
 
 interface ColumnDef {
@@ -28,14 +27,7 @@ interface ColumnDef {
   maxLength?: number
 }
 
-// Демо-данные для отображения
-const demoData: MaterialData[] = [
-  { id: 1, position: '1', name: 'Светодиодная система уличного освещения ТВЕРЬ ГАЛА', typeMarkDocuments: 'TVGAL 60/1', equipmentCode: '', manufacturer: 'CAPOC', unit: 'шт.', quantity: '13', materialPicker: '' },
-  { id: 2, position: '2', name: 'Уличный прожектор ЭЛЬФ', typeMarkDocuments: 'ELF IG S20', equipmentCode: '', manufacturer: 'CAPOC', unit: 'шт.', quantity: '42', materialPicker: '' },
-  { id: 3, position: '3', name: 'Опора круглая коническая ОКК БУЛЬВАР', typeMarkDocuments: 'BLV60', equipmentCode: '', manufacturer: 'CAPOC', unit: 'шт.', quantity: '14', materialPicker: '' },
-  { id: 4, position: '4', name: 'Монтажный комплект', typeMarkDocuments: 'MPE', equipmentCode: '', manufacturer: 'CAPOC', unit: 'шт.', quantity: '68', materialPicker: '' },
-  { id: 5, position: '5', name: 'Дифференциальный автомат', typeMarkDocuments: 'АВДТ-63М', equipmentCode: 'DA63M-10-30', manufacturer: 'EKF', unit: 'шт.', quantity: '55', materialPicker: '' }
-]
+// Демо-данные для отображения (удалено, так как не используется)
 
 const MaterialsTable: React.FC = () => {
   const [data, setData] = useState<MaterialData[]>([])
@@ -49,7 +41,7 @@ const MaterialsTable: React.FC = () => {
   const resizeStartX = useRef<number>(0)
   const resizeStartWidth = useRef<number>(0)
 
-  const { materialsDatabase, addMaterialsData } = useMaterialsData()
+  const { materialsDatabase } = useMaterialsData()
 
   // Определение колонок в стиле AG-Grid
   const columnDefs: ColumnDef[] = [
@@ -63,7 +55,8 @@ const MaterialsTable: React.FC = () => {
     { headerName: "Подбор материала", field: "materialPicker", width: 200, maxLength: 50 },
     { headerName: "Ед. изм.", field: "priceUnit", width: 60, maxLength: 10 },
     { headerName: "Стоимость", field: "price", width: 80, maxLength: 10 },
-    { headerName: "Основание", field: "source", width: 100, maxLength: 15 }
+    { headerName: "Основание", field: "source", width: 100, maxLength: 15 },
+    { headerName: "Код товара", field: "productCode", width: 100, maxLength: 15 }
   ]
 
   // Функция для получения текущей ширины колонки
@@ -150,7 +143,37 @@ const MaterialsTable: React.FC = () => {
     }
   }
 
-  // Сохранение в Supabase
+  // Функция маппинга данных материалов в структуру таблицы main
+  const mapMaterialToMain = (item: MaterialData): any => {
+    return {
+      // id - уникальный идентификатор (используем timestamp + позиция для уникальности)
+      id: parseInt(item.position) || Date.now(),
+      // row_no - номер строки из position
+      row_no: parseInt(item.position) || null,
+      // name - название материала
+      name: item.name || 'Без названия',
+      // type_brand - тип/марка из typeMarkDocuments
+      type_brand: item.typeMarkDocuments || null,
+      // drawing_code - код чертежа из equipmentCode
+      drawing_code: item.equipmentCode || null,
+      // manufacturer - производитель
+      manufacturer: item.manufacturer || null,
+      // unit - единица измерения
+      unit: item.unit || null,
+      // qty - количество
+      qty: parseFloat(item.quantity) || null,
+      // unit_out - единица измерения для цены
+      unit_out: item.priceUnit || null,
+      // cost - стоимость
+      cost: item.price ? parseFloat(item.price.replace(' ₽', '').replace(',', '.')) : null,
+      // basis - основание (источник цены)
+      basis: item.source || null,
+      // product_code - код товара
+      product_code: item.productCode || null
+    }
+  }
+
+  // Сохранение в Supabase (в таблицу main)
   const saveToSupabase = async () => {
     if (data.length === 0) {
       alert('Нет данных для сохранения')
@@ -159,81 +182,159 @@ const MaterialsTable: React.FC = () => {
 
     setLoading(true)
     try {
-      const materialsToSave: MaterialsDataInsert[] = data.map(item => ({
-        position: parseInt(item.position) || null,
-        name: item.name || null,
-        type_mark_documents: item.typeMarkDocuments || null,
-        equipment_code: item.equipmentCode || null,
-        manufacturer: item.manufacturer || null,
-        unit: item.unit || null,
-        quantity: parseFloat(item.quantity) || null,
-        material_picker: item.materialPicker || null,
-        price_unit: item.priceUnit || null,
-        price: item.price ? parseFloat(item.price.replace(' ₽', '')) : null,
-        source: item.source || null,
-        file_name: fileInputRef.current?.files?.[0]?.name || 'manual_input'
-      }))
-
-      const { error } = await addMaterialsData(materialsToSave)
+      // Сначала попробуем получить структуру таблицы
+      const { data: testData, error: testError } = await supabase
+        .from('main')
+        .select('*')
+        .limit(1)
       
+      console.log('🔍 Проверка структуры таблицы main:', testData, testError)
+      
+      // Мапим данные материалов в структуру таблицы main
+      const mainData = data.map(item => mapMaterialToMain(item))
+
+      console.log('🔄 Сохранение в таблицу main:', mainData)
+
+      // Попробуем сохранить данные используя insert вместо upsert
+      const { data: savedData, error } = await supabase
+        .from('main')
+        .insert(mainData)
+        .select()
+
       if (error) {
-        throw error
+        // Если ошибка из-за дубликатов, попробуем обновить
+        if (error.code === '23505') {
+          console.log('⚠️ Обнаружены дубликаты, пробуем обновить...')
+          
+          for (const item of mainData) {
+            const { error: updateError } = await supabase
+              .from('main')
+              .update(item)
+              .eq('id', item.id)
+            
+            if (updateError && updateError.code !== '23505') {
+              // Если запись не существует, создаем её
+              await supabase
+                .from('main')
+                .insert(item)
+            }
+          }
+          
+          alert(`Данные успешно обновлены в таблице main! Обработано записей: ${mainData.length}`)
+        } else {
+          throw error
+        }
+      } else {
+        console.log('✅ Данные сохранены в main:', savedData)
+        alert(`Данные успешно сохранены в таблицу main! Сохранено записей: ${mainData.length}`)
       }
       
-      alert('Данные успешно сохранены в базу!')
     } catch (error) {
-      console.error('Ошибка при сохранении:', error)
-      alert('Ошибка при сохранении данных')
+      console.error('❌ Ошибка при сохранении в main:', error)
+      
+      // Выводим более подробную информацию об ошибке
+      if ((error as any).details) {
+        console.error('📋 Детали ошибки:', (error as any).details)
+      }
+      if ((error as any).hint) {
+        console.error('💡 Подсказка:', (error as any).hint)
+      }
+      
+      alert('Ошибка при сохранении данных в таблицу main: ' + (error as Error).message)
     } finally {
       setLoading(false)
     }
   }
 
-  // Функция для расчета процента соответствия материала
-  const calculateMatchPercentage = (materialName: string, dbMaterialName: string): number => {
-    const name1 = materialName.toLowerCase()
-    const name2 = dbMaterialName.toLowerCase()
+  // Функция для расчета процента соответствия материала с учетом производителя
+  const calculateMatchPercentage = (
+    materialName: string, 
+    materialManufacturer: string,
+    dbMaterialName: string,
+    dbMaterialManufacturer: string
+  ): number => {
+    const name1 = materialName.toLowerCase().trim()
+    const name2 = dbMaterialName.toLowerCase().trim()
+    const manufacturer1 = materialManufacturer.toLowerCase().trim()
+    const manufacturer2 = dbMaterialManufacturer.toLowerCase().trim()
     
+    // Разбиваем на ключевые слова
     const keywords1 = name1.split(' ').filter(word => word.length > 2)
     const keywords2 = name2.split(' ').filter(word => word.length > 2)
     
-    let matches = 0
+    let nameMatches = 0
     keywords1.forEach(word1 => {
       keywords2.forEach(word2 => {
         if (word1.includes(word2) || word2.includes(word1)) {
-          matches++
+          nameMatches++
         }
       })
     })
     
+    // Базовый процент совпадения по названию
     const maxKeywords = Math.max(keywords1.length, keywords2.length)
-    return maxKeywords > 0 ? Math.min(95, Math.round((matches / maxKeywords) * 100)) : 10
+    let basePercentage = maxKeywords > 0 ? Math.round((nameMatches / maxKeywords) * 100) : 0
+    
+    // Добавляем бонус за совпадение производителя
+    if (manufacturer1 && manufacturer2) {
+      if (manufacturer1 === manufacturer2) {
+        basePercentage += 30 // Полное совпадение производителя
+      } else if (manufacturer1.includes(manufacturer2) || manufacturer2.includes(manufacturer1)) {
+        basePercentage += 15 // Частичное совпадение производителя
+      }
+    }
+    
+    // Если производители точно не совпадают, но заданы оба - снижаем процент
+    if (manufacturer1 && manufacturer2 && 
+        !manufacturer1.includes(manufacturer2) && 
+        !manufacturer2.includes(manufacturer1)) {
+      basePercentage = Math.max(0, basePercentage - 20)
+    }
+    
+    return Math.min(100, basePercentage)
   }
 
-  // Подбор материалов для всех строк
+  // Подбор материалов для всех строк с учетом производителя
   const suggestMaterials = () => {
+    console.log('🔍 Запуск подбора материалов...')
+    console.log('📊 Количество данных:', data.length)
+    console.log('🗃️ Количество материалов в базе:', materialsDatabase.length)
+    
+    if (materialsDatabase.length === 0) {
+      alert('База материалов пуста. Проверьте подключение к базе данных.')
+      return
+    }
+    
     const suggestions: any = {}
     
     data.forEach(row => {
       if (row.name) {
+        console.log(`🎯 Подбор для "${row.name}", производитель: "${row.manufacturer}" (ID: ${row.id})`)
+        
         const matches = materialsDatabase
           .map(material => ({
             ...material,
-            matchPercentage: calculateMatchPercentage(row.name, material.name)
+            matchPercentage: calculateMatchPercentage(
+              row.name, 
+              row.manufacturer || '', 
+              material.name, 
+              material.manufacturer
+            )
           }))
           .sort((a, b) => b.matchPercentage - a.matchPercentage)
 
-        let maxSuggestions: number
-        let minPercentage: number
+        // Более гибкие критерии для подбора
+        let maxSuggestions = 3
+        let minPercentage = 20
         
-        if (row.id <= 2) {
+        // Если есть совпадение по производителю, показываем больше вариантов
+        const hasManufacturerMatch = matches.some(m => 
+          row.manufacturer && 
+          m.manufacturer.toLowerCase().includes(row.manufacturer.toLowerCase())
+        )
+        
+        if (hasManufacturerMatch) {
           maxSuggestions = 5
-          minPercentage = 10
-        } else if (row.id <= 4) {
-          maxSuggestions = 4
-          minPercentage = 12
-        } else {
-          maxSuggestions = 2
           minPercentage = 15
         }
         
@@ -241,11 +342,18 @@ const MaterialsTable: React.FC = () => {
           .filter(material => material.matchPercentage >= minPercentage)
           .slice(0, maxSuggestions)
         
+        console.log(`✨ Найдено ${selectedMatches.length} совпадений для "${row.name}"`)
+        console.log(`🏭 Лучшие совпадения:`, selectedMatches.map(m => 
+          `${m.name} (${m.manufacturer}) - ${m.matchPercentage}%`
+        ))
+        
         if (selectedMatches.length > 0) {
           suggestions[row.id] = selectedMatches
         }
       }
     })
+    
+    console.log('📝 Итого предложений:', Object.keys(suggestions).length)
     
     setMaterialSuggestions(suggestions)
     setShowMaterialSuggestions(true)
@@ -253,22 +361,31 @@ const MaterialsTable: React.FC = () => {
 
   // Выбор материала и скрытие предложений
   const selectSuggestedMaterial = (material: any, rowId: number) => {
-    updateCellData(rowId, 'materialPicker', `${material.code} - ${material.name}`)
-    updateCellData(rowId, 'manufacturer', material.manufacturer)
-    updateCellData(rowId, 'unit', material.unit)
+    console.log(`✅ Выбран материал:`, material)
+    console.log(`📋 ID материала: ${material.id}, Код: ${material.code}`)
     
+    // Обновляем данные в строке
     setData(prevData => 
       prevData.map(row => 
         row.id === rowId ? { 
           ...row, 
+          // Подбор материала: показываем код и название
           materialPicker: `${material.code} - ${material.name}`,
-          priceUnit: material.unit,
-          price: `${material.price} ₽`,
-          source: material.source
+          // Обновляем производителя из базы данных
+          manufacturer: material.manufacturer,
+          // Единица измерения
+          priceUnit: material.unit || 'шт.',
+          // Цена (если есть)
+          price: material.price > 0 ? `${material.price} ₽` : '',
+          // Источник
+          source: material.source || 'prise_list_etm',
+          // ВАЖНО: Код товара = ID из таблицы prise_list_etm
+          productCode: String(material.id)
         } : row
       )
     )
     
+    // Убираем предложения для этой строки
     const newSuggestions = { ...materialSuggestions }
     delete newSuggestions[rowId]
     setMaterialSuggestions(newSuggestions)
@@ -276,6 +393,8 @@ const MaterialsTable: React.FC = () => {
     if (Object.keys(newSuggestions).length === 0) {
       setShowMaterialSuggestions(false)
     }
+    
+    console.log(`✅ Материал применен к строке ${rowId}. Код товара: ${material.id}`)
   }
 
   // Скрытие всех предложений
@@ -780,9 +899,10 @@ const MaterialsTable: React.FC = () => {
                     onClick={saveToSupabase}
                     disabled={loading}
                     className="btn btn-green"
+                    title="Сохранить данные в таблицу main"
                   >
                     <Save size={16} />
-                    {loading ? 'Сохранение...' : 'Записать в базу'}
+                    {loading ? 'Сохранение...' : 'Сохранить в БД'}
                   </button>
                 </div>
               )}
@@ -910,7 +1030,7 @@ const MaterialsTable: React.FC = () => {
                               )
                             }
                             
-                            if (['priceUnit', 'price', 'source'].includes(column.field)) {
+                            if (['priceUnit', 'price', 'source', 'productCode'].includes(column.field)) {
                               return (
                                 <td key={column.field} className="price-cell" style={{ 
                                   width: `${getColumnWidth(column.field)}px`,
@@ -937,9 +1057,10 @@ const MaterialsTable: React.FC = () => {
                                       
                                       {materialSuggestions[row.id].map((suggestion: any, index: number) => (
                                         <div key={index} className="price-suggestion">
-                                          {column.field === 'priceUnit' && suggestion.unit}
-                                          {column.field === 'price' && `${suggestion.price} ₽`}
-                                          {column.field === 'source' && suggestion.source}
+                                          {column.field === 'priceUnit' && (suggestion.unit || 'шт.')}
+                                          {column.field === 'price' && (suggestion.price > 0 ? `${suggestion.price} ₽` : '-')}
+                                          {column.field === 'source' && (suggestion.source || 'prise_list_etm')}
+                                          {column.field === 'productCode' && suggestion.id}
                                         </div>
                                       ))}
                                     </div>

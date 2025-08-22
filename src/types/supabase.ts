@@ -156,6 +156,7 @@ export interface Database {
           price_unit: string | null
           price: number | null
           source: string | null
+          product_code: string | null
           file_name: string | null
           created_at: string
           updated_at: string
@@ -173,6 +174,7 @@ export interface Database {
           price_unit?: string | null
           price?: number | null
           source?: string | null
+          product_code?: string | null
           file_name?: string | null
           created_at?: string
           updated_at?: string
@@ -190,6 +192,7 @@ export interface Database {
           price_unit?: string | null
           price?: number | null
           source?: string | null
+          product_code?: string | null
           file_name?: string | null
           created_at?: string
           updated_at?: string
@@ -232,6 +235,39 @@ export interface Database {
           class_code?: number
           created_at?: string
           updated_at?: string
+        }
+      }
+      // Главная таблица main 
+      main: {
+        Row: {
+          id: number
+          name: string
+          brand: string
+          article: string | null
+          brand_code: string
+          cli_code: string | null
+          class: string
+          class_code: number
+        }
+        Insert: {
+          id?: number
+          name: string
+          brand: string
+          article?: string | null
+          brand_code: string
+          cli_code?: string | null
+          class: string
+          class_code: number
+        }
+        Update: {
+          id?: number
+          name?: string
+          brand?: string
+          article?: string | null
+          brand_code?: string
+          cli_code?: string | null
+          class?: string
+          class_code?: number
         }
       }
     }

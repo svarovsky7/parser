@@ -4,45 +4,76 @@ import { useProductsData } from '../hooks/useProductsData'
 import { parseCSV } from '../lib/csvParser'
 import type { Product, ProductImport } from '../types/product'
 
+interface FileResult {
+  fileName: string
+  data: ProductImport[]
+  errors: string[]
+}
+
 export const ProductsImport: React.FC = () => {
+  const [fileResults, setFileResults] = useState<FileResult[]>([])
   const [parsedData, setParsedData] = useState<ProductImport[]>([])
   const [parseErrors, setParseErrors] = useState<string[]>([])
+  // const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [importing, setImporting] = useState(false)
   const [importProgress, setImportProgress] = useState(0)
   const [importedCount, setImportedCount] = useState(0)
   const [importResult, setImportResult] = useState<{ success: boolean; message: string; details?: string } | null>(null)
   const [newlyImportedIds, setNewlyImportedIds] = useState<Set<number>>(new Set())
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [totalProductsCount, setTotalProductsCount] = useState<number>(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  const { loading, error, importProducts, fetchProducts, deleteAllProducts } = useProductsData()
+  const { loading, error, importProducts, fetchProducts, fetchProductsCount, deleteAllProducts } = useProductsData()
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+    const files = event.target.files
+    if (!files || files.length === 0) return
 
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      alert('Пожалуйста, выберите CSV файл')
+    // Проверяем, что все файлы - CSV
+    const nonCsvFiles = Array.from(files).filter(file => !file.name.toLowerCase().endsWith('.csv'))
+    if (nonCsvFiles.length > 0) {
+      alert(`Пожалуйста, выберите только CSV файлы. Неподдерживаемые: ${nonCsvFiles.map(f => f.name).join(', ')}`)
       return
     }
 
-    try {
-      const text = await file.text()
-      const result = parseCSV(text)
-      
-      setParsedData(result.data)
-      setParseErrors(result.errors)
-      setImportResult(null)
-      
-      if (result.success) {
-        console.log(`Парсинг успешен: ${result.data.length} записей из ${result.total}`)
-      } else {
-        console.error('Ошибки парсинга:', result.errors)
+    setImportResult(null)
+    const results: FileResult[] = []
+    let allData: ProductImport[] = []
+    let allErrors: string[] = []
+
+    // Обрабатываем каждый файл
+    for (const file of Array.from(files)) {
+      try {
+        const text = await file.text()
+        const result = parseCSV(text)
+        
+        const fileResult: FileResult = {
+          fileName: file.name,
+          data: result.data,
+          errors: result.errors.map(err => `${file.name}: ${err}`)
+        }
+        
+        results.push(fileResult)
+        allData = [...allData, ...result.data]
+        allErrors = [...allErrors, ...fileResult.errors]
+        
+        if (result.success) {
+          console.log(`${file.name}: ${result.data.length} записей из ${result.total}`)
+        } else {
+          console.error(`${file.name}: ошибки парсинга`, result.errors)
+        }
+      } catch (err) {
+        console.error(`Ошибка чтения файла ${file.name}:`, err)
+        allErrors.push(`${file.name}: Ошибка при чтении файла`)
       }
-    } catch (err) {
-      console.error('Ошибка чтения файла:', err)
-      alert('Ошибка при чтении файла')
     }
+
+    setFileResults(results)
+    setParsedData(allData)
+    setParseErrors(allErrors)
+    // setSelectedFiles(results.map(r => r.fileName))
   }
 
   const handleImport = async () => {
@@ -79,6 +110,8 @@ export const ProductsImport: React.FC = () => {
         // Очищаем данные предпросмотра
         setParsedData([])
         setParseErrors([])
+        setFileResults([])
+        // setSelectedFiles([])
         
         // Обновляем таблицу с товарами
         await loadProducts()
@@ -117,8 +150,23 @@ export const ProductsImport: React.FC = () => {
   }
 
   const loadProducts = async () => {
-    const data = await fetchProducts()
-    setProducts(data)
+    try {
+      setInitialLoading(true)
+      // Загружаем первые 1000 товаров для отображения в таблице
+      const data = await fetchProducts()
+      setProducts(data)
+      
+      // Отдельно загружаем общее количество товаров
+      const totalCount = await fetchProductsCount()
+      setTotalProductsCount(totalCount)
+      
+      console.log(`✅ Загружено товаров для отображения: ${data.length}, всего в БД: ${totalCount}`)
+    } catch (err) {
+      console.error('❌ Ошибка загрузки товаров:', err)
+      setTotalProductsCount(0)
+    } finally {
+      setInitialLoading(false)
+    }
   }
 
   const handleClearAll = async () => {
@@ -431,7 +479,15 @@ export const ProductsImport: React.FC = () => {
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-title">Всего товаров в БД</div>
-            <div className="stat-value">{products.length}</div>
+            <div className="stat-value">
+              {initialLoading ? (
+                <span style={{ fontSize: '16px', color: '#6b7280' }}>Загрузка...</span>
+              ) : (
+                <span style={{ color: totalProductsCount > 0 ? '#111827' : '#6b7280' }}>
+                  {totalProductsCount.toLocaleString('ru-RU')}
+                </span>
+              )}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-title">Последний импорт</div>
@@ -450,6 +506,7 @@ export const ProductsImport: React.FC = () => {
               ref={fileInputRef}
               type="file"
               accept=".csv"
+              multiple
               onChange={handleFileSelect}
               style={{ display: 'none' }}
             />
@@ -458,7 +515,7 @@ export const ProductsImport: React.FC = () => {
               className="btn btn-blue"
             >
               <Upload size={16} />
-              Выбрать CSV файл
+              Выбрать CSV файлы
             </button>
             
             <button
@@ -567,6 +624,69 @@ export const ProductsImport: React.FC = () => {
           </div>
         )}
 
+        {/* Files Information */}
+        {fileResults.length > 0 && (
+          <div className="table-container">
+            <div style={{ padding: '16px', borderBottom: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#111827' }}>
+                Загруженные файлы ({fileResults.length})
+              </h3>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {fileResults.map((fileResult, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <FileSpreadsheet size={20} style={{ color: '#059669' }} />
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#111827' }}>{fileResult.fileName}</div>
+                        <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                          {fileResult.data.length} записей
+                          {fileResult.errors.length > 0 && (
+                            <span style={{ color: '#dc2626', marginLeft: '8px' }}>
+                              · {fileResult.errors.length} предупреждений
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: '500', color: '#059669' }}>
+                      ✓ Готов к импорту
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ 
+                marginTop: '16px', 
+                padding: '12px', 
+                backgroundColor: '#f0fdf4', 
+                borderRadius: '8px',
+                border: '1px solid #bbf7d0'
+              }}>
+                <div style={{ fontWeight: '600', color: '#166534', marginBottom: '4px' }}>
+                  Итого для импорта:
+                </div>
+                <div style={{ color: '#166534', fontSize: '14px' }}>
+                  📊 {parsedData.length} записей из {fileResults.length} файлов
+                  {parseErrors.length > 0 && (
+                    <span style={{ marginLeft: '16px' }}>
+                      ⚠️ {parseErrors.length} предупреждений
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Preview Table */}
         {parsedData.length > 0 && (
           <div className="table-container">
@@ -617,7 +737,7 @@ export const ProductsImport: React.FC = () => {
         <div id="products-table" className="table-container">
           <div style={{ padding: '16px', borderBottom: '1px solid #e5e7eb' }}>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#111827' }}>
-              База данных товаров ({products.length} записей)
+              База данных товаров (показано {products.length} из {totalProductsCount.toLocaleString('ru-RU')})
             </h3>
           </div>
 

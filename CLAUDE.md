@@ -64,6 +64,8 @@ The system implements an intelligent material matching algorithm:
 
 **IMPORTANT**: The complete and authoritative database schema (tables, views, functions, triggers, policies) is defined in `supabase/schemes/prod.sql`. This file contains the full production database structure exported from Supabase.
 
+**Setup**: Initial database setup instructions and material seeding information can be found in `MATERIALS_INTEGRATION.md`.
+
 ### Primary Tables
 
 **materials_data** - User imported materials (from `supabase/migrations/create_materials_tables.sql`):
