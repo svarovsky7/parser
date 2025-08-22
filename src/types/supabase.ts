@@ -195,6 +195,45 @@ export interface Database {
           updated_at?: string
         }
       }
+      // Таблица товаров
+      products: {
+        Row: {
+          id: number
+          name: string
+          brand: string
+          article: string | null
+          brand_code: string
+          cli_code: string | null
+          class: string
+          class_code: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: number
+          name: string
+          brand: string
+          article?: string | null
+          brand_code: string
+          cli_code?: string | null
+          class: string
+          class_code: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          brand?: string
+          article?: string | null
+          brand_code?: string
+          cli_code?: string | null
+          class?: string
+          class_code?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

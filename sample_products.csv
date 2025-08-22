@@ -1,0 +1,6 @@
+id,name,brand,article,brand_code,cli_code,class,class_code
+1,"Ноутбук Dell Inspiron 15","Dell","INS-15-001","DELL","CLI001","Компьютеры",100
+2,"Монитор Samsung 24''","Samsung","","SAMS","","Мониторы",200
+3,"Клавиатура Logitech K120","Logitech","K120","LOGI","CLI003","Периферия",300
+4,"Мышь Microsoft Optical","Microsoft","MS-OPT-001","MSFT","CLI004","Периферия",300
+5,"Принтер HP LaserJet","HP","LJ-001","HP","","Принтеры",400

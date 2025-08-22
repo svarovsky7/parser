@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2025-08-20T21:19:22.398271
+-- Generated: 2025-08-22T09:01:57.909010
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -242,6 +242,7 @@ COMMENT ON TABLE auth.sso_providers IS 'Auth: Manages SSO identity provider info
 COMMENT ON COLUMN auth.sso_providers.resource_id IS 'Auth: Uniquely identifies a SSO provider according to a user-chosen resource ID (case insensitive), useful in infrastructure as code.';
 
 -- Table: auth.users
+-- Description: Auth: Stores user login data within a secure schema.
 CREATE TABLE IF NOT EXISTS auth.users (
     instance_id uuid,
     instance_id uuid,
@@ -316,44 +317,24 @@ CREATE TABLE IF NOT EXISTS auth.users (
     CONSTRAINT users_phone_key UNIQUE (phone),
     CONSTRAINT users_pkey PRIMARY KEY (id)
 );
+COMMENT ON TABLE auth.users IS 'Auth: Stores user login data within a secure schema.';
 COMMENT ON COLUMN auth.users.is_sso_user IS 'Auth: Set this column to true when the account comes from SSO. These accounts can have duplicate emails.';
 
--- Table: public.equipment_data
-CREATE TABLE IF NOT EXISTS public.equipment_data (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    file_name text NOT NULL,
-    position integer(32),
-    name_and_specs text,
-    type_mark_docs text,
-    equipment_code text,
-    manufacturer text,
-    unit_measure text,
-    quantity numeric,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT equipment_data_pkey PRIMARY KEY (id)
-);
-COMMENT ON COLUMN public.equipment_data.position IS 'Позиция';
-COMMENT ON COLUMN public.equipment_data.name_and_specs IS 'Наименования и технические характеристики';
-COMMENT ON COLUMN public.equipment_data.type_mark_docs IS 'Тип, марка, обозначение документов, опросного листа';
-COMMENT ON COLUMN public.equipment_data.equipment_code IS 'Код оборудования, изделия, материалов, № опросного листа';
-COMMENT ON COLUMN public.equipment_data.manufacturer IS 'Завод изготовитель';
-COMMENT ON COLUMN public.equipment_data.unit_measure IS 'Единица измерения';
-COMMENT ON COLUMN public.equipment_data.quantity IS 'Кол-во';
-
--- Table: public.excel_data
-CREATE TABLE IF NOT EXISTS public.excel_data (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    file_name text NOT NULL,
-    sheet_name text,
-    row_number integer(32),
-    data jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT excel_data_pkey PRIMARY KEY (id)
+-- Table: public.products
+CREATE TABLE IF NOT EXISTS public.products (
+    id bigint(64) NOT NULL,
+    name text NOT NULL,
+    brand text NOT NULL,
+    article text,
+    brand_code text NOT NULL,
+    cli_code text,
+    class text NOT NULL,
+    class_code bigint(64) NOT NULL,
+    CONSTRAINT products_pkey PRIMARY KEY (id)
 );
 
 -- Table: public.users
+-- Description: Auth: Stores user login data within a secure schema.
 CREATE TABLE IF NOT EXISTS public.users (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -368,6 +349,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     CONSTRAINT users_email_key UNIQUE (email),
     CONSTRAINT users_pkey PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.users IS 'Auth: Stores user login data within a secure schema.';
 
 -- Table: realtime.messages
 CREATE TABLE IF NOT EXISTS realtime.messages (
@@ -418,9 +400,20 @@ CREATE TABLE IF NOT EXISTS storage.buckets (
     file_size_limit bigint(64),
     allowed_mime_types ARRAY,
     owner_id text,
+    type USER-DEFINED NOT NULL DEFAULT 'STANDARD'::storage.buckettype,
     CONSTRAINT buckets_pkey PRIMARY KEY (id)
 );
 COMMENT ON COLUMN storage.buckets.owner IS 'Field is deprecated, use owner_id instead';
+
+-- Table: storage.buckets_analytics
+CREATE TABLE IF NOT EXISTS storage.buckets_analytics (
+    id text NOT NULL,
+    type USER-DEFINED NOT NULL DEFAULT 'ANALYTICS'::storage.buckettype,
+    format text NOT NULL DEFAULT 'ICEBERG'::text,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT buckets_analytics_pkey PRIMARY KEY (id)
+);
 
 -- Table: storage.migrations
 CREATE TABLE IF NOT EXISTS storage.migrations (
@@ -444,10 +437,24 @@ CREATE TABLE IF NOT EXISTS storage.objects (
     version text,
     owner_id text,
     user_metadata jsonb,
+    level integer(32),
     CONSTRAINT objects_bucketId_fkey FOREIGN KEY (bucket_id) REFERENCES None.None(None),
     CONSTRAINT objects_pkey PRIMARY KEY (id)
 );
 COMMENT ON COLUMN storage.objects.owner IS 'Field is deprecated, use owner_id instead';
+
+-- Table: storage.prefixes
+CREATE TABLE IF NOT EXISTS storage.prefixes (
+    bucket_id text NOT NULL,
+    name text NOT NULL,
+    level integer(32) NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT prefixes_bucketId_fkey FOREIGN KEY (bucket_id) REFERENCES None.None(None),
+    CONSTRAINT prefixes_pkey PRIMARY KEY (bucket_id),
+    CONSTRAINT prefixes_pkey PRIMARY KEY (level),
+    CONSTRAINT prefixes_pkey PRIMARY KEY (name)
+);
 
 -- Table: storage.s3_multipart_uploads
 CREATE TABLE IF NOT EXISTS storage.s3_multipart_uploads (
@@ -514,6 +521,8 @@ CREATE TYPE auth.one_time_token_type AS ENUM ('confirmation_token', 'reauthentic
 CREATE TYPE realtime.action AS ENUM ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR');
 
 CREATE TYPE realtime.equality_op AS ENUM ('eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in');
+
+CREATE TYPE storage.buckettype AS ENUM ('STANDARD', 'ANALYTICS');
 
 
 -- ============================================
@@ -705,7 +714,7 @@ AS '$libdir/pgcrypto', $function$pg_decrypt_iv$function$
 
 
 -- Function: extensions.digest
-CREATE OR REPLACE FUNCTION extensions.digest(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.digest(text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -713,7 +722,7 @@ AS '$libdir/pgcrypto', $function$pg_digest$function$
 
 
 -- Function: extensions.digest
-CREATE OR REPLACE FUNCTION extensions.digest(text, text)
+CREATE OR REPLACE FUNCTION extensions.digest(bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -753,19 +762,19 @@ AS '$libdir/pgcrypto', $function$pg_random_uuid$function$
 
 
 -- Function: extensions.gen_salt
-CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
- RETURNS text
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
-
-
--- Function: extensions.gen_salt
 CREATE OR REPLACE FUNCTION extensions.gen_salt(text)
  RETURNS text
  LANGUAGE c
  PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pg_gen_salt$function$
+
+
+-- Function: extensions.gen_salt
+CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
+ RETURNS text
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
 
 
 -- Function: extensions.grant_pg_cron_access
@@ -912,7 +921,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -920,7 +929,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -976,7 +985,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -984,11 +993,19 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
+
+
+-- Function: extensions.pgp_pub_decrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
+ RETURNS bytea
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
@@ -1001,14 +1018,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 -- Function: extensions.pgp_pub_decrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
- RETURNS bytea
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1032,14 +1041,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_encrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
@@ -1047,12 +1048,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
--- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
- RETURNS text
+-- Function: extensions.pgp_pub_encrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+ RETURNS bytea
  LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
@@ -1063,8 +1064,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
+-- Function: extensions.pgp_sym_decrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
+ RETURNS text
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
+
+
 -- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1072,7 +1081,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1461,8 +1470,8 @@ CREATE OR REPLACE FUNCTION public.update_updated_at_column()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
+    NEW.updated_at = NOW();
+    RETURN NEW;
 END;
 $function$
 
@@ -2129,6 +2138,25 @@ select nullif(current_setting('realtime.topic', true), '')::text;
 $function$
 
 
+-- Function: storage.add_prefixes
+CREATE OR REPLACE FUNCTION storage.add_prefixes(_bucket_id text, _name text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    prefixes text[];
+BEGIN
+    prefixes := "storage"."get_prefixes"("_name");
+
+    IF array_length(prefixes, 1) > 0 THEN
+        INSERT INTO storage.prefixes (name, bucket_id)
+        SELECT UNNEST(prefixes) as name, "_bucket_id" ON CONFLICT DO NOTHING;
+    END IF;
+END;
+$function$
+
+
 -- Function: storage.can_insert_object
 CREATE OR REPLACE FUNCTION storage.can_insert_object(bucketid text, name text, owner uuid, metadata jsonb)
  RETURNS void
@@ -2144,19 +2172,87 @@ END
 $function$
 
 
+-- Function: storage.delete_prefix
+CREATE OR REPLACE FUNCTION storage.delete_prefix(_bucket_id text, _name text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    -- Check if we can delete the prefix
+    IF EXISTS(
+        SELECT FROM "storage"."prefixes"
+        WHERE "prefixes"."bucket_id" = "_bucket_id"
+          AND level = "storage"."get_level"("_name") + 1
+          AND "prefixes"."name" COLLATE "C" LIKE "_name" || '/%'
+        LIMIT 1
+    )
+    OR EXISTS(
+        SELECT FROM "storage"."objects"
+        WHERE "objects"."bucket_id" = "_bucket_id"
+          AND "storage"."get_level"("objects"."name") = "storage"."get_level"("_name") + 1
+          AND "objects"."name" COLLATE "C" LIKE "_name" || '/%'
+        LIMIT 1
+    ) THEN
+    -- There are sub-objects, skip deletion
+    RETURN false;
+    ELSE
+        DELETE FROM "storage"."prefixes"
+        WHERE "prefixes"."bucket_id" = "_bucket_id"
+          AND level = "storage"."get_level"("_name")
+          AND "prefixes"."name" = "_name";
+        RETURN true;
+    END IF;
+END;
+$function$
+
+
+-- Function: storage.delete_prefix_hierarchy_trigger
+CREATE OR REPLACE FUNCTION storage.delete_prefix_hierarchy_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    prefix text;
+BEGIN
+    prefix := "storage"."get_prefix"(OLD."name");
+
+    IF coalesce(prefix, '') != '' THEN
+        PERFORM "storage"."delete_prefix"(OLD."bucket_id", prefix);
+    END IF;
+
+    RETURN OLD;
+END;
+$function$
+
+
+-- Function: storage.enforce_bucket_name_length
+CREATE OR REPLACE FUNCTION storage.enforce_bucket_name_length()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+    if length(new.name) > 100 then
+        raise exception 'bucket name "%" is too long (% characters). Max is 100.', new.name, length(new.name);
+    end if;
+    return new;
+end;
+$function$
+
+
 -- Function: storage.extension
 CREATE OR REPLACE FUNCTION storage.extension(name text)
  RETURNS text
  LANGUAGE plpgsql
+ IMMUTABLE
 AS $function$
 DECLARE
-_parts text[];
-_filename text;
+    _parts text[];
+    _filename text;
 BEGIN
-	select string_to_array(name, '/') into _parts;
-	select _parts[array_length(_parts,1)] into _filename;
-	-- @todo return the last part instead of 2
-	return reverse(split_part(reverse(_filename), '.', 1));
+    SELECT string_to_array(name, '/') INTO _parts;
+    SELECT _parts[array_length(_parts,1)] INTO _filename;
+    RETURN reverse(split_part(reverse(_filename), '.', 1));
 END
 $function$
 
@@ -2179,13 +2275,67 @@ $function$
 CREATE OR REPLACE FUNCTION storage.foldername(name text)
  RETURNS text[]
  LANGUAGE plpgsql
+ IMMUTABLE
 AS $function$
 DECLARE
-_parts text[];
+    _parts text[];
 BEGIN
-	select string_to_array(name, '/') into _parts;
-	return _parts[1:array_length(_parts,1)-1];
+    -- Split on "/" to get path segments
+    SELECT string_to_array(name, '/') INTO _parts;
+    -- Return everything except the last segment
+    RETURN _parts[1 : array_length(_parts,1) - 1];
 END
+$function$
+
+
+-- Function: storage.get_level
+CREATE OR REPLACE FUNCTION storage.get_level(name text)
+ RETURNS integer
+ LANGUAGE sql
+ IMMUTABLE STRICT
+AS $function$
+SELECT array_length(string_to_array("name", '/'), 1);
+$function$
+
+
+-- Function: storage.get_prefix
+CREATE OR REPLACE FUNCTION storage.get_prefix(name text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE STRICT
+AS $function$
+SELECT
+    CASE WHEN strpos("name", '/') > 0 THEN
+             regexp_replace("name", '[\/]{1}[^\/]+\/?$', '')
+         ELSE
+             ''
+        END;
+$function$
+
+
+-- Function: storage.get_prefixes
+CREATE OR REPLACE FUNCTION storage.get_prefixes(name text)
+ RETURNS text[]
+ LANGUAGE plpgsql
+ IMMUTABLE STRICT
+AS $function$
+DECLARE
+    parts text[];
+    prefixes text[];
+    prefix text;
+BEGIN
+    -- Split the name into parts by '/'
+    parts := string_to_array("name", '/');
+    prefixes := '{}';
+
+    -- Construct the prefixes, stopping one level below the last part
+    FOR i IN 1..array_length(parts, 1) - 1 LOOP
+            prefix := array_to_string(parts[1:i], '/');
+            prefixes := array_append(prefixes, prefix);
+    END LOOP;
+
+    RETURN prefixes;
+END;
 $function$
 
 
@@ -2193,10 +2343,11 @@ $function$
 CREATE OR REPLACE FUNCTION storage.get_size_by_bucket()
  RETURNS TABLE(size bigint, bucket_id text)
  LANGUAGE plpgsql
+ STABLE
 AS $function$
 BEGIN
     return query
-        select sum((metadata->>'size')::int) as size, obj.bucket_id
+        select sum((metadata->>'size')::bigint) as size, obj.bucket_id
         from "storage".objects as obj
         group by obj.bucket_id;
 END
@@ -2289,6 +2440,60 @@ END;
 $function$
 
 
+-- Function: storage.objects_insert_prefix_trigger
+CREATE OR REPLACE FUNCTION storage.objects_insert_prefix_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    PERFORM "storage"."add_prefixes"(NEW."bucket_id", NEW."name");
+    NEW.level := "storage"."get_level"(NEW."name");
+
+    RETURN NEW;
+END;
+$function$
+
+
+-- Function: storage.objects_update_prefix_trigger
+CREATE OR REPLACE FUNCTION storage.objects_update_prefix_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    old_prefixes TEXT[];
+BEGIN
+    -- Ensure this is an update operation and the name has changed
+    IF TG_OP = 'UPDATE' AND (NEW."name" <> OLD."name" OR NEW."bucket_id" <> OLD."bucket_id") THEN
+        -- Retrieve old prefixes
+        old_prefixes := "storage"."get_prefixes"(OLD."name");
+
+        -- Remove old prefixes that are only used by this object
+        WITH all_prefixes as (
+            SELECT unnest(old_prefixes) as prefix
+        ),
+        can_delete_prefixes as (
+             SELECT prefix
+             FROM all_prefixes
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM "storage"."objects"
+                 WHERE "bucket_id" = OLD."bucket_id"
+                   AND "name" <> OLD."name"
+                   AND "name" LIKE (prefix || '%')
+             )
+         )
+        DELETE FROM "storage"."prefixes" WHERE name IN (SELECT prefix FROM can_delete_prefixes);
+
+        -- Add new prefixes
+        PERFORM "storage"."add_prefixes"(NEW."bucket_id", NEW."name");
+    END IF;
+    -- Set the new level
+    NEW."level" := "storage"."get_level"(NEW."name");
+
+    RETURN NEW;
+END;
+$function$
+
+
 -- Function: storage.operation
 CREATE OR REPLACE FUNCTION storage.operation()
  RETURNS text
@@ -2301,49 +2506,83 @@ END;
 $function$
 
 
+-- Function: storage.prefixes_insert_trigger
+CREATE OR REPLACE FUNCTION storage.prefixes_insert_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    PERFORM "storage"."add_prefixes"(NEW."bucket_id", NEW."name");
+    RETURN NEW;
+END;
+$function$
+
+
 -- Function: storage.search
 CREATE OR REPLACE FUNCTION storage.search(prefix text, bucketname text, limits integer DEFAULT 100, levels integer DEFAULT 1, offsets integer DEFAULT 0, search text DEFAULT ''::text, sortcolumn text DEFAULT 'name'::text, sortorder text DEFAULT 'asc'::text)
+ RETURNS TABLE(name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)
+ LANGUAGE plpgsql
+AS $function$
+declare
+    can_bypass_rls BOOLEAN;
+begin
+    SELECT rolbypassrls
+    INTO can_bypass_rls
+    FROM pg_roles
+    WHERE rolname = coalesce(nullif(current_setting('role', true), 'none'), current_user);
+
+    IF can_bypass_rls THEN
+        RETURN QUERY SELECT * FROM storage.search_v1_optimised(prefix, bucketname, limits, levels, offsets, search, sortcolumn, sortorder);
+    ELSE
+        RETURN QUERY SELECT * FROM storage.search_legacy_v1(prefix, bucketname, limits, levels, offsets, search, sortcolumn, sortorder);
+    END IF;
+end;
+$function$
+
+
+-- Function: storage.search_legacy_v1
+CREATE OR REPLACE FUNCTION storage.search_legacy_v1(prefix text, bucketname text, limits integer DEFAULT 100, levels integer DEFAULT 1, offsets integer DEFAULT 0, search text DEFAULT ''::text, sortcolumn text DEFAULT 'name'::text, sortorder text DEFAULT 'asc'::text)
  RETURNS TABLE(name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)
  LANGUAGE plpgsql
  STABLE
 AS $function$
 declare
-  v_order_by text;
-  v_sort_order text;
+    v_order_by text;
+    v_sort_order text;
 begin
-  case
-    when sortcolumn = 'name' then
-      v_order_by = 'name';
-    when sortcolumn = 'updated_at' then
-      v_order_by = 'updated_at';
-    when sortcolumn = 'created_at' then
-      v_order_by = 'created_at';
-    when sortcolumn = 'last_accessed_at' then
-      v_order_by = 'last_accessed_at';
-    else
-      v_order_by = 'name';
-  end case;
+    case
+        when sortcolumn = 'name' then
+            v_order_by = 'name';
+        when sortcolumn = 'updated_at' then
+            v_order_by = 'updated_at';
+        when sortcolumn = 'created_at' then
+            v_order_by = 'created_at';
+        when sortcolumn = 'last_accessed_at' then
+            v_order_by = 'last_accessed_at';
+        else
+            v_order_by = 'name';
+        end case;
 
-  case
-    when sortorder = 'asc' then
-      v_sort_order = 'asc';
-    when sortorder = 'desc' then
-      v_sort_order = 'desc';
-    else
-      v_sort_order = 'asc';
-  end case;
+    case
+        when sortorder = 'asc' then
+            v_sort_order = 'asc';
+        when sortorder = 'desc' then
+            v_sort_order = 'desc';
+        else
+            v_sort_order = 'asc';
+        end case;
 
-  v_order_by = v_order_by || ' ' || v_sort_order;
+    v_order_by = v_order_by || ' ' || v_sort_order;
 
-  return query execute
-    'with folders as (
-       select path_tokens[$1] as folder
-       from storage.objects
-         where objects.name ilike $2 || $3 || ''%''
-           and bucket_id = $4
-           and array_length(objects.path_tokens, 1) <> $1
-       group by folder
-       order by folder ' || v_sort_order || '
+    return query execute
+        'with folders as (
+           select path_tokens[$1] as folder
+           from storage.objects
+             where objects.name ilike $2 || $3 || ''%''
+               and bucket_id = $4
+               and array_length(objects.path_tokens, 1) <> $1
+           group by folder
+           order by folder ' || v_sort_order || '
      )
      (select folder as "name",
             null as id,
@@ -2366,6 +2605,119 @@ begin
      limit $5
      offset $6' using levels, prefix, search, bucketname, limits, offsets;
 end;
+$function$
+
+
+-- Function: storage.search_v1_optimised
+CREATE OR REPLACE FUNCTION storage.search_v1_optimised(prefix text, bucketname text, limits integer DEFAULT 100, levels integer DEFAULT 1, offsets integer DEFAULT 0, search text DEFAULT ''::text, sortcolumn text DEFAULT 'name'::text, sortorder text DEFAULT 'asc'::text)
+ RETURNS TABLE(name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+declare
+    v_order_by text;
+    v_sort_order text;
+begin
+    case
+        when sortcolumn = 'name' then
+            v_order_by = 'name';
+        when sortcolumn = 'updated_at' then
+            v_order_by = 'updated_at';
+        when sortcolumn = 'created_at' then
+            v_order_by = 'created_at';
+        when sortcolumn = 'last_accessed_at' then
+            v_order_by = 'last_accessed_at';
+        else
+            v_order_by = 'name';
+        end case;
+
+    case
+        when sortorder = 'asc' then
+            v_sort_order = 'asc';
+        when sortorder = 'desc' then
+            v_sort_order = 'desc';
+        else
+            v_sort_order = 'asc';
+        end case;
+
+    v_order_by = v_order_by || ' ' || v_sort_order;
+
+    return query execute
+        'with folders as (
+           select (string_to_array(name, ''/''))[level] as name
+           from storage.prefixes
+             where lower(prefixes.name) like lower($2 || $3) || ''%''
+               and bucket_id = $4
+               and level = $1
+           order by name ' || v_sort_order || '
+     )
+     (select name,
+            null as id,
+            null as updated_at,
+            null as created_at,
+            null as last_accessed_at,
+            null as metadata from folders)
+     union all
+     (select path_tokens[level] as "name",
+            id,
+            updated_at,
+            created_at,
+            last_accessed_at,
+            metadata
+     from storage.objects
+     where lower(objects.name) like lower($2 || $3) || ''%''
+       and bucket_id = $4
+       and level = $1
+     order by ' || v_order_by || ')
+     limit $5
+     offset $6' using levels, prefix, search, bucketname, limits, offsets;
+end;
+$function$
+
+
+-- Function: storage.search_v2
+CREATE OR REPLACE FUNCTION storage.search_v2(prefix text, bucket_name text, limits integer DEFAULT 100, levels integer DEFAULT 1, start_after text DEFAULT ''::text)
+ RETURNS TABLE(key text, name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, metadata jsonb)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+BEGIN
+    RETURN query EXECUTE
+        $sql$
+        SELECT * FROM (
+            (
+                SELECT
+                    split_part(name, '/', $4) AS key,
+                    name || '/' AS name,
+                    NULL::uuid AS id,
+                    NULL::timestamptz AS updated_at,
+                    NULL::timestamptz AS created_at,
+                    NULL::jsonb AS metadata
+                FROM storage.prefixes
+                WHERE name COLLATE "C" LIKE $1 || '%'
+                AND bucket_id = $2
+                AND level = $4
+                AND name COLLATE "C" > $5
+                ORDER BY prefixes.name COLLATE "C" LIMIT $3
+            )
+            UNION ALL
+            (SELECT split_part(name, '/', $4) AS key,
+                name,
+                id,
+                updated_at,
+                created_at,
+                metadata
+            FROM storage.objects
+            WHERE name COLLATE "C" LIKE $1 || '%'
+                AND bucket_id = $2
+                AND level = $4
+                AND name COLLATE "C" > $5
+            ORDER BY name COLLATE "C" LIMIT $3)
+        ) obj
+        ORDER BY name COLLATE "C" LIMIT $3;
+        $sql$
+        USING prefix, bucket_name, limits, levels, start_after;
+END;
 $function$
 
 
@@ -2469,20 +2821,32 @@ $function$
 -- TRIGGERS
 -- ============================================
 
--- Trigger: update_equipment_data_updated_at on public.equipment_data
-CREATE TRIGGER update_equipment_data_updated_at BEFORE UPDATE ON public.equipment_data FOR EACH ROW EXECUTE FUNCTION update_equipment_data_updated_at()
-
--- Trigger: update_excel_data_updated_at on public.excel_data
-CREATE TRIGGER update_excel_data_updated_at BEFORE UPDATE ON public.excel_data FOR EACH ROW EXECUTE FUNCTION update_excel_data_updated_at()
-
 -- Trigger: update_users_updated_at on public.users
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
 -- Trigger: tr_check_filters on realtime.subscription
 CREATE TRIGGER tr_check_filters BEFORE INSERT OR UPDATE ON realtime.subscription FOR EACH ROW EXECUTE FUNCTION realtime.subscription_check_filters()
 
+-- Trigger: enforce_bucket_name_length_trigger on storage.buckets
+CREATE TRIGGER enforce_bucket_name_length_trigger BEFORE INSERT OR UPDATE OF name ON storage.buckets FOR EACH ROW EXECUTE FUNCTION storage.enforce_bucket_name_length()
+
+-- Trigger: objects_delete_delete_prefix on storage.objects
+CREATE TRIGGER objects_delete_delete_prefix AFTER DELETE ON storage.objects FOR EACH ROW EXECUTE FUNCTION storage.delete_prefix_hierarchy_trigger()
+
+-- Trigger: objects_insert_create_prefix on storage.objects
+CREATE TRIGGER objects_insert_create_prefix BEFORE INSERT ON storage.objects FOR EACH ROW EXECUTE FUNCTION storage.objects_insert_prefix_trigger()
+
+-- Trigger: objects_update_create_prefix on storage.objects
+CREATE TRIGGER objects_update_create_prefix BEFORE UPDATE ON storage.objects FOR EACH ROW WHEN (((new.name <> old.name) OR (new.bucket_id <> old.bucket_id))) EXECUTE FUNCTION storage.objects_update_prefix_trigger()
+
 -- Trigger: update_objects_updated_at on storage.objects
 CREATE TRIGGER update_objects_updated_at BEFORE UPDATE ON storage.objects FOR EACH ROW EXECUTE FUNCTION storage.update_updated_at_column()
+
+-- Trigger: prefixes_create_hierarchy on storage.prefixes
+CREATE TRIGGER prefixes_create_hierarchy BEFORE INSERT ON storage.prefixes FOR EACH ROW WHEN ((pg_trigger_depth() < 1)) EXECUTE FUNCTION storage.prefixes_insert_trigger()
+
+-- Trigger: prefixes_delete_hierarchy on storage.prefixes
+CREATE TRIGGER prefixes_delete_hierarchy AFTER DELETE ON storage.prefixes FOR EACH ROW EXECUTE FUNCTION storage.delete_prefix_hierarchy_trigger()
 
 
 -- ============================================
@@ -2624,24 +2988,6 @@ CREATE INDEX users_is_anonymous_idx ON auth.users USING btree (is_anonymous);
 -- Index on auth.users
 CREATE UNIQUE INDEX users_phone_key ON auth.users USING btree (phone);
 
--- Index on public.equipment_data
-CREATE INDEX idx_equipment_data_created_at ON public.equipment_data USING btree (created_at DESC);
-
--- Index on public.equipment_data
-CREATE INDEX idx_equipment_data_file_name ON public.equipment_data USING btree (file_name);
-
--- Index on public.equipment_data
-CREATE INDEX idx_equipment_data_manufacturer ON public.equipment_data USING btree (manufacturer);
-
--- Index on public.equipment_data
-CREATE INDEX idx_equipment_data_position ON public.equipment_data USING btree ("position");
-
--- Index on public.excel_data
-CREATE INDEX idx_excel_data_created_at ON public.excel_data USING btree (created_at DESC);
-
--- Index on public.excel_data
-CREATE INDEX idx_excel_data_file_name ON public.excel_data USING btree (file_name);
-
 -- Index on public.users
 CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email);
 
@@ -2664,10 +3010,22 @@ CREATE UNIQUE INDEX migrations_name_key ON storage.migrations USING btree (name)
 CREATE UNIQUE INDEX bucketid_objname ON storage.objects USING btree (bucket_id, name);
 
 -- Index on storage.objects
+CREATE UNIQUE INDEX idx_name_bucket_level_unique ON storage.objects USING btree (name COLLATE "C", bucket_id, level);
+
+-- Index on storage.objects
 CREATE INDEX idx_objects_bucket_id_name ON storage.objects USING btree (bucket_id, name COLLATE "C");
 
 -- Index on storage.objects
+CREATE INDEX idx_objects_lower_name ON storage.objects USING btree ((path_tokens[level]), lower(name) text_pattern_ops, bucket_id, level);
+
+-- Index on storage.objects
 CREATE INDEX name_prefix_search ON storage.objects USING btree (name text_pattern_ops);
+
+-- Index on storage.objects
+CREATE UNIQUE INDEX objects_bucket_id_level_idx ON storage.objects USING btree (bucket_id, level, name COLLATE "C");
+
+-- Index on storage.prefixes
+CREATE INDEX idx_prefixes_lower_name ON storage.prefixes USING btree (bucket_id, level, ((string_to_array(name, '/'::text))[level]), lower(name) text_pattern_ops);
 
 -- Index on storage.s3_multipart_uploads
 CREATE INDEX idx_multipart_uploads_list ON storage.s3_multipart_uploads USING btree (bucket_id, key, created_at);
@@ -2753,14 +3111,26 @@ GRANT supabase_realtime_admin TO postgres;
 -- GRANT CREATE, USAGE ON SCHEMA extensions TO postgres;
 -- GRANT USAGE ON SCHEMA graphql TO postgres;
 -- GRANT USAGE ON SCHEMA graphql_public TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_12 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_17 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_temp_21 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_temp_23 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_35 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_38 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_temp_43 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_temp_58 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_59 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_temp_7 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_12 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_17 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_21 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_23 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_35 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_38 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_43 TO postgres;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_58 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_59 TO postgres;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_7 TO postgres;
 -- GRANT USAGE ON SCHEMA pgbouncer TO postgres;
 -- GRANT CREATE, USAGE ON SCHEMA public TO postgres;
 -- GRANT CREATE, USAGE ON SCHEMA realtime TO postgres;
@@ -2793,14 +3163,26 @@ CREATE ROLE supabase_admin WITH SUPERUSER CREATEDB CREATEROLE LOGIN REPLICATION 
 -- GRANT CREATE, USAGE ON SCHEMA extensions TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA graphql TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA graphql_public TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_12 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_17 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_temp_21 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_temp_23 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_35 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_38 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_temp_43 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_temp_58 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_59 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_temp_7 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_12 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_17 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_21 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_23 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_35 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_38 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_43 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_58 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_59 TO supabase_admin;
+-- GRANT CREATE, USAGE ON SCHEMA pg_toast_temp_7 TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA pgbouncer TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA public TO supabase_admin;
 -- GRANT CREATE, USAGE ON SCHEMA realtime TO supabase_admin;
@@ -2825,14 +3207,26 @@ GRANT pg_read_all_data TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA extensions TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA graphql TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA graphql_public TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_12 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_17 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_temp_21 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_temp_23 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_35 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_38 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_temp_43 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_temp_58 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_59 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_temp_7 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_12 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_17 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_21 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_23 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_35 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_38 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_43 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_58 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_59 TO supabase_etl_admin;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_7 TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA pgbouncer TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA public TO supabase_etl_admin;
 -- GRANT USAGE ON SCHEMA realtime TO supabase_etl_admin;
@@ -2849,14 +3243,26 @@ GRANT pg_read_all_data TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA extensions TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA graphql TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA graphql_public TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_12 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_17 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_temp_21 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_temp_23 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_35 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_38 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_temp_43 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_temp_58 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_59 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_temp_7 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_12 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_17 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_21 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_23 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_35 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_38 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_43 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pg_toast_temp_58 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_59 TO supabase_read_only_user;
+-- GRANT USAGE ON SCHEMA pg_toast_temp_7 TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA pgbouncer TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA public TO supabase_read_only_user;
 -- GRANT USAGE ON SCHEMA realtime TO supabase_read_only_user;
