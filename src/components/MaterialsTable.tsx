@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Upload, Save, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useMaterialsData } from '../hooks/useMaterialsData'
+import { useMaterialSearch, type MaterialSearchResult } from '../hooks/useMaterialSearch'
 import { supabase } from '../lib/supabase'
 
 interface MaterialData {
@@ -42,6 +43,7 @@ const MaterialsTable: React.FC = () => {
   const resizeStartWidth = useRef<number>(0)
 
   const { materialsDatabase } = useMaterialsData()
+  const { searchMaterials } = useMaterialSearch()
 
   // Определение колонок в стиле AG-Grid
   const columnDefs: ColumnDef[] = [
@@ -156,7 +158,7 @@ const MaterialsTable: React.FC = () => {
       type_brand: item.typeMarkDocuments || null,
       // drawing_code - код чертежа из equipmentCode
       drawing_code: item.equipmentCode || null,
-      // manufacturer - производитель
+      // manufacturer - производитель (из подбора материала или исходный)
       manufacturer: item.manufacturer || null,
       // unit - единица измерения
       unit: item.unit || null,
@@ -168,7 +170,7 @@ const MaterialsTable: React.FC = () => {
       cost: item.price ? parseFloat(item.price.replace(' ₽', '').replace(',', '.')) : null,
       // basis - основание (источник цены)
       basis: item.source || null,
-      // product_code - код товара
+      // product_code - СВЯЗЬ с prise_list_etm (ID товара из каталога)
       product_code: item.productCode || null
     }
   }
@@ -182,13 +184,24 @@ const MaterialsTable: React.FC = () => {
 
     setLoading(true)
     try {
-      // Сначала попробуем получить структуру таблицы
-      const { data: testData, error: testError } = await supabase
-        .from('main')
-        .select('*')
-        .limit(1)
-      
-      console.log('🔍 Проверка структуры таблицы main:', testData, testError)
+      // Проверяем связь с таблицей prise_list_etm
+      const materialsWithProducts = data.filter(item => item.productCode)
+      if (materialsWithProducts.length > 0) {
+        console.log('🔗 Проверяем связь с prise_list_etm для кодов товаров:', 
+          materialsWithProducts.map(m => m.productCode))
+        
+        const productCodes = materialsWithProducts.map(m => parseInt(m.productCode!))
+        const { data: linkedProducts, error: linkError } = await supabase
+          .from('prise_list_etm')
+          .select('id, name, brand')
+          .in('id', productCodes)
+        
+        if (linkError) {
+          console.error('❌ Ошибка проверки связи:', linkError)
+        } else {
+          console.log('✅ Найдены связанные товары:', linkedProducts)
+        }
+      }
       
       // Мапим данные материалов в структуру таблицы main
       const mainData = data.map(item => mapMaterialToMain(item))
@@ -294,43 +307,151 @@ const MaterialsTable: React.FC = () => {
     return Math.min(100, basePercentage)
   }
 
-  // Подбор материалов для всех строк с учетом производителя
-  const suggestMaterials = () => {
+  // Подбор материалов с fallback на старую логику
+  const suggestMaterials = async () => {
     console.log('🔍 Запуск подбора материалов...')
     console.log('📊 Количество данных:', data.length)
-    console.log('🗃️ Количество материалов в базе:', materialsDatabase.length)
     
-    if (materialsDatabase.length === 0) {
-      alert('База материалов пуста. Проверьте подключение к базе данных.')
+    if (data.length === 0) {
+      alert('Нет данных для подбора материалов.')
       return
     }
+
+    setLoading(true)
+    let suggestions: any = {}
     
+    try {
+      // Пробуем использовать новый поиск через Supabase
+      console.log('🚀 Попытка поиска через Supabase функции...')
+      
+      const searchPromises = data
+        .filter(row => row.name && row.name.trim())
+        .map(async (row) => {
+          try {
+            // Используем новую функцию поиска
+            const matches = await searchMaterials(row.name, {
+              similarityThreshold: 0.2,
+              minWordLength: 3,
+              limitResults: 5
+            })
+
+            if (matches.length > 0) {
+              // Преобразуем результаты в нужный формат для отображения
+              const formattedMatches = matches.map(match => ({
+                id: match.id,
+                code: match.brand_code || match.id.toString(),
+                name: match.name,
+                manufacturer: match.brand,
+                unit: 'шт.',
+                price: 0,
+                source: 'prise_list_etm',
+                matchPercentage: Math.round((match.similarity_score || match.match_score || 0) * 100)
+              }))
+
+              return { rowId: row.id, matches: formattedMatches }
+            }
+            return null
+          } catch (error) {
+            console.error(`❌ Ошибка поиска для "${row.name}":`, error)
+            return null
+          }
+        })
+
+      const results = await Promise.all(searchPromises)
+      
+      results.forEach(result => {
+        if (result && result.matches.length > 0) {
+          suggestions[result.rowId] = result.matches
+        }
+      })
+
+      // Если новый поиск не дал результатов, используем fallback
+      if (Object.keys(suggestions).length === 0) {
+        console.log('⚠️ Supabase поиск не дал результатов, используем fallback...')
+        suggestions = await fallbackMaterialSearch()
+      }
+
+    } catch (error) {
+      console.error('❌ Ошибка Supabase поиска, переходим на fallback:', error)
+      suggestions = await fallbackMaterialSearch()
+    }
+
+    console.log('📝 Итого предложений:', Object.keys(suggestions).length)
+    
+    if (Object.keys(suggestions).length === 0) {
+      alert('Не найдено совпадений в базе материалов. Проверьте:\n1. Применена ли миграция в Supabase\n2. Есть ли данные в таблице prise_list_etm\n3. Корректность названий материалов')
+    } else {
+      setMaterialSuggestions(suggestions)
+      setShowMaterialSuggestions(true)
+    }
+
+    setLoading(false)
+  }
+
+  // Fallback поиск через старую логику (если Supabase функции недоступны)
+  const fallbackMaterialSearch = async () => {
+    console.log('🔄 Fallback: поиск через materialsDatabase...')
+    
+    if (materialsDatabase.length === 0) {
+      console.log('⚠️ materialsDatabase пуста, пробуем прямой запрос...')
+      
+      try {
+        // Прямой запрос к prise_list_etm
+        const { data: priseListData, error } = await supabase
+          .from('prise_list_etm')
+          .select('id, name, brand, article, brand_code, cli_code, class, class_code')
+          .limit(1000)
+
+        if (error) {
+          console.error('❌ Ошибка загрузки prise_list_etm:', error)
+          return {}
+        }
+
+        console.log(`✅ Загружено ${priseListData?.length || 0} записей из prise_list_etm`)
+        
+        if (!priseListData || priseListData.length === 0) {
+          return {}
+        }
+
+        // Используем загруженные данные для поиска
+        return performLocalSearch(priseListData)
+        
+      } catch (error) {
+        console.error('❌ Ошибка прямого запроса:', error)
+        return {}
+      }
+    }
+
+    // Используем существующий materialsDatabase
+    return performLocalSearch(materialsDatabase)
+  }
+
+  // Локальный поиск по массиву данных
+  const performLocalSearch = (materials: any[]) => {
     const suggestions: any = {}
     
     data.forEach(row => {
       if (row.name) {
-        console.log(`🎯 Подбор для "${row.name}", производитель: "${row.manufacturer}" (ID: ${row.id})`)
+        console.log(`🎯 Локальный поиск для "${row.name}" (ID: ${row.id})`)
         
-        const matches = materialsDatabase
+        const matches = materials
           .map(material => ({
             ...material,
             matchPercentage: calculateMatchPercentage(
               row.name, 
               row.manufacturer || '', 
               material.name, 
-              material.manufacturer
+              material.brand || material.manufacturer || ''
             )
           }))
           .sort((a, b) => b.matchPercentage - a.matchPercentage)
 
-        // Более гибкие критерии для подбора
         let maxSuggestions = 3
         let minPercentage = 20
         
-        // Если есть совпадение по производителю, показываем больше вариантов
         const hasManufacturerMatch = matches.some(m => 
           row.manufacturer && 
-          m.manufacturer.toLowerCase().includes(row.manufacturer.toLowerCase())
+          (m.brand || m.manufacturer || '').toLowerCase().includes(row.manufacturer.toLowerCase())
         )
         
         if (hasManufacturerMatch) {
@@ -341,22 +462,25 @@ const MaterialsTable: React.FC = () => {
         const selectedMatches = matches
           .filter(material => material.matchPercentage >= minPercentage)
           .slice(0, maxSuggestions)
-        
-        console.log(`✨ Найдено ${selectedMatches.length} совпадений для "${row.name}"`)
-        console.log(`🏭 Лучшие совпадения:`, selectedMatches.map(m => 
-          `${m.name} (${m.manufacturer}) - ${m.matchPercentage}%`
-        ))
+          .map(match => ({
+            id: match.id,
+            code: match.brand_code || match.code || match.id.toString(),
+            name: match.name,
+            manufacturer: match.brand || match.manufacturer || '',
+            unit: 'шт.',
+            price: match.price || 0,
+            source: 'prise_list_etm',
+            matchPercentage: match.matchPercentage
+          }))
         
         if (selectedMatches.length > 0) {
           suggestions[row.id] = selectedMatches
+          console.log(`✨ Найдено ${selectedMatches.length} совпадений для "${row.name}"`)
         }
       }
     })
     
-    console.log('📝 Итого предложений:', Object.keys(suggestions).length)
-    
-    setMaterialSuggestions(suggestions)
-    setShowMaterialSuggestions(true)
+    return suggestions
   }
 
   // Выбор материала и скрытие предложений
