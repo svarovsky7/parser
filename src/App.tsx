@@ -168,4 +168,10 @@ function App() {
   )
 }
 
-export default App
+export default App// компонент кнопки с текстом "Купить"
+
+// компонент кнопки с текстом "Купить"
+
+// React button component with text "Buy"
+
+// React button component with text "Buy"

@@ -9,9 +9,16 @@ export interface MaterialSearchResult {
   brand_code: string
   cli_code: string | null
   class: string
-  class_code: string
+  class_code: number
   similarity_score?: number
   match_score?: number
+  // Дополнительные поля для совместимости с MaterialsTable
+  code?: string
+  manufacturer?: string
+  unit?: string
+  price?: number
+  source?: string
+  matchPercentage?: number
 }
 
 export const useMaterialSearch = () => {
@@ -178,12 +185,46 @@ export const useMaterialSearch = () => {
     }
   }, [findExactMatches, searchByKeywords, searchBySimilarity])
 
+  // Функция преобразования результатов для совместимости с MaterialsTable
+  const transformResults = useCallback((results: MaterialSearchResult[]): MaterialSearchResult[] => {
+    return results.map(result => ({
+      ...result,
+      code: result.brand_code, // Используем brand_code как код
+      manufacturer: result.brand, // Используем brand как производитель
+      unit: 'шт.', // Значение по умолчанию
+      price: 0, // Значение по умолчанию
+      source: 'prise_list_etm',
+      matchPercentage: Math.round(result.match_score || 0)
+    }))
+  }, [])
+
+  // Функция поиска для конкретной строки из main (для интеграции с MaterialsTable)
+  const searchForMainRow = useCallback(async (
+    rowId: number,
+    materialName: string,
+    options?: {
+      similarityThreshold?: number
+      minWordLength?: number  
+      limitResults?: number
+    }
+  ): Promise<{ rowId: number; matches: MaterialSearchResult[] }> => {
+    const results = await searchMaterials(materialName, options)
+    const transformedResults = transformResults(results)
+    
+    return {
+      rowId,
+      matches: transformedResults
+    }
+  }, [searchMaterials, transformResults])
+
   return {
     loading,
     error,
     searchBySimilarity,
     findExactMatches, 
     searchByKeywords,
-    searchMaterials
+    searchMaterials,
+    transformResults,
+    searchForMainRow
   }
 }
