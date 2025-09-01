@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Upload, Save, Trash2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useMaterialsData } from '../hooks/useMaterialsData'
-import { useMaterialSearch, type MaterialSearchResult } from '../hooks/useMaterialSearch'
+import { useMaterialSearch } from '../hooks/useMaterialSearch'
 import { supabase } from '../lib/supabase'
 
 interface MaterialData {
@@ -43,7 +43,7 @@ const MaterialsTable: React.FC = () => {
   const resizeStartWidth = useRef<number>(0)
 
   const { materialsDatabase } = useMaterialsData()
-  const { searchMaterials } = useMaterialSearch()
+  const { searchForMainRow } = useMaterialSearch()
 
   // Определение колонок в стиле AG-Grid
   const columnDefs: ColumnDef[] = [
@@ -329,28 +329,13 @@ const MaterialsTable: React.FC = () => {
         .map(async (row) => {
           try {
             // Используем новую функцию поиска
-            const matches = await searchMaterials(row.name, {
+            const result = await searchForMainRow(row.id, row.name, {
               similarityThreshold: 0.2,
               minWordLength: 3,
               limitResults: 5
             })
 
-            if (matches.length > 0) {
-              // Преобразуем результаты в нужный формат для отображения
-              const formattedMatches = matches.map(match => ({
-                id: match.id,
-                code: match.brand_code || match.id.toString(),
-                name: match.name,
-                manufacturer: match.brand,
-                unit: 'шт.',
-                price: 0,
-                source: 'prise_list_etm',
-                matchPercentage: Math.round((match.similarity_score || match.match_score || 0) * 100)
-              }))
-
-              return { rowId: row.id, matches: formattedMatches }
-            }
-            return null
+            return result.matches.length > 0 ? result : null
           } catch (error) {
             console.error(`❌ Ошибка поиска для "${row.name}":`, error)
             return null
